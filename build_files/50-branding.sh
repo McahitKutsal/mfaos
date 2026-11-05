@@ -22,25 +22,28 @@ EXCLUDE='^(NAME|PRETTY_NAME|VARIANT|VARIANT_ID|HOME_URL|BUG_REPORT_URL|SUPPORT_U
 EXCLUDE="${EXCLUDE})="
 
 NEW=/tmp/os-release.new
-grep -v -E "${EXCLUDE}" /usr/lib/os-release > "${NEW}"
+grep -v -E "${EXCLUDE}" /usr/lib/os-release \
+    | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' > "${NEW}"
 
-cat >> "${NEW}" <<INNER
+{
+    echo "NAME=\"${OS_PRETTY_NAME}\""
+    echo "PRETTY_NAME=\"${OS_PRETTY_NAME} ${FEDORA_VERSION}\""
+    echo "VARIANT=\"${OS_PRETTY_NAME}\""
+    echo "VARIANT_ID=${OS_NAME}"
+    echo "HOME_URL=\"${REPO_URL}\""
+    echo "DOCUMENTATION_URL=\"${REPO_URL}\""
+    echo "BUG_REPORT_URL=\"${REPO_URL}/issues\""
+    echo "SUPPORT_URL=\"${REPO_URL}/issues\""
+    echo "MFAOS_IMAGE_REF=\"${IMAGE_REF}\""
+    echo "MFAOS_BUILD_DATE=\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+    [[ -n "${LOGO_KEY}" ]] && echo "LOGO=${LOGO_KEY}"
+} >> "${NEW}"
 
-# --- ${OS_PRETTY_NAME} ---
-NAME="${OS_PRETTY_NAME}"
-PRETTY_NAME="${OS_PRETTY_NAME} ${FEDORA_VERSION}"
-VARIANT="${OS_PRETTY_NAME}"
-VARIANT_ID=${OS_NAME}
-HOME_URL="${REPO_URL}"
-DOCUMENTATION_URL="${REPO_URL}#readme"
-BUG_REPORT_URL="${REPO_URL}/issues"
-SUPPORT_URL="${REPO_URL}/issues"
-
-MFAOS_IMAGE_REF="${IMAGE_REF}"
-MFAOS_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-INNER
-
-[[ -n "${LOGO_KEY}" ]] && echo "LOGO=${LOGO_KEY}" >> "${NEW}"
+if grep -vqE '^[A-Za-z_][A-Za-z0-9_]*=' "${NEW}"; then
+    echo "HATA: os-release icinde gecersiz satir var:" >&2
+    grep -vnE '^[A-Za-z_][A-Za-z0-9_]*=' "${NEW}" >&2
+    exit 1
+fi
 
 cat "${NEW}" > /usr/lib/os-release
 rm -f "${NEW}"

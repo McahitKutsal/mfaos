@@ -108,6 +108,31 @@ else
     find /var -mindepth 1 \( -type f -o -type l \) 2>/dev/null | head -10 | sed 's/^/           /'
 fi
 
+# --- Dil ve klavye ---
+if locale -a 2>/dev/null | grep -qi '^tr_TR'; then
+    ok "tr_TR yerel ayari mevcut"
+else
+    bad "tr_TR yerel ayari YOK — sistem C.UTF-8'e duser"
+fi
+
+if grep -q '^LANG=tr_TR' /etc/locale.conf 2>/dev/null; then
+    ok "varsayilan dil Turkce"
+else
+    bad "varsayilan dil ayarlanmamis"
+fi
+
+if grep -q '^KEYMAP=trq' /etc/vconsole.conf 2>/dev/null; then
+    ok "konsol klavyesi Turkce Q"
+else
+    warn "konsol klavyesi ayarlanmamis"
+fi
+
+if grep -q 'XkbLayout.*"tr' /etc/X11/xorg.conf.d/00-keyboard.conf 2>/dev/null; then
+    ok "oturum klavyesi Turkce Q"
+else
+    warn "oturum klavyesi ayarlanmamis"
+fi
+
 # --- Kimlik ---
 if grep -q '^PRETTY_NAME=.*mfaOS' /usr/lib/os-release 2>/dev/null; then
     ok "sistem kimligi: $(. /usr/lib/os-release; echo "${PRETTY_NAME}")"

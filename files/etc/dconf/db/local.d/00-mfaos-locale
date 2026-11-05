@@ -1,0 +1,3 @@
+[org/gnome/desktop/input-sources]
+sources=[('xkb', 'tr'), ('xkb', 'us')]
+xkb-options=['grp:alt_shift_toggle']
