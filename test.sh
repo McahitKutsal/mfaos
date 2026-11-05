@@ -95,22 +95,43 @@ vm() {
     # Imaji rootless podman ile derledik (~/.local/share/containers),
     # ama image-builder root olarak calisir ve root'un deposuna bakar
     # (/var/lib/containers). Aktarmazsan "image not found" alirsin.
-    if ! sudo podman image exists "${TAG}" 2>/dev/null; then
-        echo "==> Imaj root deposuna aktariliyor (birkac dakika surer)"
-        podman save "${TAG}" | sudo podman load
+    local local_id rootful_id
+    local_id="$(podman image inspect --format '{{.Id}}' "${TAG}" 2>/dev/null || true)"
+    rootful_id="$(sudo podman image inspect --format '{{.Id}}' "${TAG}" 2>/dev/null || true)"
+
+    if [[ -z "${local_id}" ]]; then
+        echo "HATA: ${TAG} yok. Once: ./test.sh build" >&2
+        return 1
     fi
 
-    echo "==> Disk imaji uretiliyor (birkac dakika surer)"
-    sudo podman run --rm -it --privileged \
-        --security-opt label=type:unconfined_t \
-        -v "${OUT_DIR}":/output \
-        -v /var/lib/containers/storage:/var/lib/containers/storage \
-        -v "$(pwd)/disk-config.toml":/config.toml:ro \
-        quay.io/centos-bootc/bootc-image-builder:latest \
-        --type qcow2 --local --config /config.toml \
-        "${TAG}"
+    if [[ "${local_id}" != "${rootful_id}" ]]; then
+        echo "==> Imaj root deposuna aktariliyor (birkac dakika surer)"
+        podman save "${TAG}" | sudo podman load
+    else
+        echo "==> Root deposundaki imaj guncel"
+    fi
 
     local qcow="${OUT_DIR}/qcow2/disk.qcow2"
+    local marker="${OUT_DIR}/.built-from"
+
+    if [[ -f "${qcow}" && -f "${marker}" \
+          && "$(cat "${marker}")" == "${local_id}" \
+          && "${REBUILD_DISK:-0}" != "1" ]]; then
+        echo "==> Disk imaji guncel (REBUILD_DISK=1 ile yeniden uret)"
+    else
+        echo "==> Disk imaji uretiliyor (birkac dakika surer)"
+        sudo podman run --rm -it --privileged \
+            --security-opt label=type:unconfined_t \
+            -v "${OUT_DIR}":/output \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            -v "$(pwd)/disk-config.toml":/config.toml:ro \
+            quay.io/centos-bootc/bootc-image-builder:latest \
+            --type qcow2 --config /config.toml \
+            "${TAG}"
+
+        sudo chown -R "$(id -u):$(id -g)" "${OUT_DIR}"
+        echo "${local_id}" > "${marker}"
+    fi
     # NVRAM yazilabilir olmali: bootloader acilis kaydini oraya yazar.
     # Salt okunur birakirsan yeniden baslatma davranisini test edemezsin.
     local nvram="${OUT_DIR}/OVMF_VARS.local.fd"

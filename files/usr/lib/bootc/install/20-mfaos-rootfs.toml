@@ -1,0 +1,5 @@
+# Kok dosya sistemi tipi. bootc bunu imajdan okur.
+# Bildirilmezse hem bootc-image-builder duser, hem de gercek makineye
+# kurarken dosya sistemini elle belirtmen gerekir.
+[install.filesystem.root]
+type = "ext4"

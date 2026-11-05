@@ -1,20 +1,18 @@
 # bootc-image-builder disk duzeni.
 #
-# Faz 1'de duz bir disk yeterli. LUKS + TPM muhurleme Faz 3'te,
-# kurulum sirasinda elle yapilir (README'ye bak) — image-builder
-# TPM muhurlemeyi uretim sirasinda yapamaz, cunku muhur hedef
-# makinenin TPM'ine baglidir.
+# NOT: /var'i ayri bolum olarak tanimlayamazsin. bootc/ostree'de /var
+# kok dosya sisteminin parcasi ve ostree tarafindan yonetiliyor.
+# Tum makine durumu kokun icindeki /var'da yasar, bu yuzden koku genis tut.
+#
+# Sifreli ayri bir /var istiyorsan bu, gercek makineye kurulum sirasinda
+# LUKS ile yapilir — imaj uretiminde degil. Faz 3.
 
 [[customizations.filesystem]]
 mountpoint = "/"
-minsize = "20 GiB"
-
-[[customizations.filesystem]]
-mountpoint = "/var"
-minsize = "15 GiB"
+minsize = "30 GiB"
 
 # Test kullanicisi — SADECE QEMU testi icin.
-# Gercek kurulumda bu blogu sil; kullaniciyi kurulum sonrasi olustur.
+# Gercek kurulumda bu blogu SIL.
 [[customizations.user]]
 name = "test"
 password = "test"

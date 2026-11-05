@@ -108,6 +108,27 @@ else
     find /var -mindepth 1 \( -type f -o -type l \) 2>/dev/null | head -10 | sed 's/^/           /'
 fi
 
+# --- Kimlik ---
+if grep -q '^PRETTY_NAME=.*mfaOS' /usr/lib/os-release 2>/dev/null; then
+    ok "sistem kimligi: $(. /usr/lib/os-release; echo "${PRETTY_NAME}")"
+else
+    warn "os-release hala Fedora olarak gorunuyor"
+fi
+
+# ID=fedora kalmali: RPM Fusion, Flatpak ve ucuncu parti scriptler bu
+# alana bakiyor. Degismisse paket yonetimi sessizce bozulur.
+if grep -q '^ID=fedora$' /usr/lib/os-release 2>/dev/null; then
+    ok "ID=fedora korunmus"
+else
+    bad "ID degistirilmis — paket yonetimi bozulabilir"
+fi
+
+if grep -q '^LOGO=mfaos$' /usr/lib/os-release 2>/dev/null; then
+    ok "logo ayarlanmis"
+else
+    warn "logo ayarlanmamis (Fedora logosu kullaniliyor)"
+fi
+
 KERNEL="$(rpm -q kernel-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}\n' 2>/dev/null | tail -1)"
 if [[ -n "${KERNEL}" && -d "/usr/lib/modules/${KERNEL}" ]]; then
     ok "cekirdek: ${KERNEL}"
