@@ -1,0 +1,36 @@
+{
+  "default": [
+    {
+      "type": "insecureAcceptAnything"
+    }
+  ],
+  "transports": {
+    "docker": {
+      "ghcr.io/mcahitkutsal/mfaos": [
+        {
+          "type": "sigstoreSigned",
+          "keyPath": "/etc/pki/containers/mfaos.pub",
+          "signedIdentity": {
+            "type": "matchRepository"
+          }
+        }
+      ],
+      "ghcr.io/mcahitkutsal/mfaos-nvidia": [
+        {
+          "type": "sigstoreSigned",
+          "keyPath": "/etc/pki/containers/mfaos.pub",
+          "signedIdentity": {
+            "type": "matchRepository"
+          }
+        }
+      ]
+    },
+    "docker-daemon": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    }
+  }
+}

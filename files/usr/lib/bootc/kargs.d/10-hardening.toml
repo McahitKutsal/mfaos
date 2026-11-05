@@ -1,0 +1,48 @@
+# bootc, imajdaki bu dosyalari okuyup cekirdek komut satirina ekler.
+# Guncellemeyle birlikte tasinirlar — makinede elle karga eklemek
+# yerine burayi degistir, imaji yeniden yayinla.
+
+kargs = [
+  # Ayrilan ve serbest birakilan bellegi sifirla. Kullanimdan-sonra
+  # ve ilklenmemis-bellek siniflarindaki aciklarin cogunu oldurur.
+  "init_on_alloc=1",
+  "init_on_free=1",
+
+  # Slab onbelleklerini birlestirme — heap sismasi saldirilarini
+  # zorlastirir.
+  "slab_nomerge",
+
+  # Cekirdek yigin ofsetini her sistem cagrisinda rastgelelestir.
+  "randomize_kstack_offset=on",
+
+  # Sayfa ayiricisini rastgelelestir.
+  "page_alloc.shuffle=1",
+
+  # Eski vsyscall arayuzunu kapat (ROP gadget kaynagi).
+  "vsyscall=none",
+
+  # debugfs'i kapat.
+  "debugfs=off",
+
+  # Gereksiz cekirdek surucularini korumali moda al.
+  "iommu.passthrough=0",
+  "iommu.strict=1",
+
+  # --- Asagidakiler bilincli tercih gerektiriyor ---
+
+  # lockdown=integrity: kok kullanicinin bile calisan cekirdegi
+  # degistirmesini engeller (/dev/mem, kexec, imzasiz modul).
+  # Secure Boot acikken zaten otomatik devreye girer.
+  # NVIDIA gibi imzasiz DKMS modullerini KIRAR.
+  # "lockdown=integrity",
+
+  # module.sig_enforce=1: imzasiz hicbir modul yuklenmez.
+  # Kendi anahtarinla modul imzalama kurmadan ACMA — sistem
+  # acilmayabilir. Faz 3 isi.
+  # "module.sig_enforce=1",
+
+  # mitigations=auto,nosmt: SMT/Hyper-Threading'i kapatir.
+  # Yan kanal saldirilarina karsi en guclu koruma, ama laptop'ta
+  # ciddi performans kaybi. Tehdit modeline gore karar ver.
+  # "mitigations=auto,nosmt",
+]

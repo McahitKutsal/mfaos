@@ -1,0 +1,5 @@
+docker:
+  ghcr.io/mcahitkutsal/mfaos:
+    use-sigstore-attachments: true
+  ghcr.io/mcahitkutsal/mfaos-nvidia:
+    use-sigstore-attachments: true

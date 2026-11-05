@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1
+#
+# mfaos — kendi masaüstü işletim sistemin
+#
+# Fedora Atomic Desktop tabanı üzerine inşa edilir. Taban imaj
+# donanım etkinleştirmesini, masaüstü yığınını ve CVE bakımını
+# getirir; bu dosya ise senin kararlarını ekler.
+#
+# Değiştirmen gereken yer: aşağıdaki OS_NAME ve IMAGE_REF.
+
+# ---------------------------------------------------------------
+# Taban imaj seçimi
+# ---------------------------------------------------------------
+#   silverblue    -> GNOME
+#   kinoite       -> KDE Plasma
+#   sway-atomic   -> Sway (tiling wm)
+#   budgie-atomic -> Budgie
+#
+# Not: quay.io/fedora-ostree-desktops altindaki resmi imajlar
+# IMZALI DEGIL. Faz 3'te kendi imzalanmis tabanina gecis icin
+# README'deki "Sealed imajlar" bolumune bak.
+ARG BASE_IMAGE="quay.io/fedora-ostree-desktops/silverblue"
+ARG FEDORA_VERSION="44"
+
+FROM ${BASE_IMAGE}:${FEDORA_VERSION}
+
+# ---------------------------------------------------------------
+# Kimlik — burayi kendine gore degistir
+# ---------------------------------------------------------------
+ARG OS_NAME="mfaos"
+ARG OS_PRETTY_NAME="mfaOS"
+ARG IMAGE_REF="ghcr.io/mcahitkutsal/mfaos"
+ARG FEDORA_VERSION
+ARG IMAGE_TAG="${FEDORA_VERSION}"
+
+# Varyant anahtari. 0 = temiz imaj (Intel/AMD), 1 = NVIDIA surucusu dahil.
+# Karisik bir filoda tek imaj dogru cozum degil: NVIDIA olmayan
+# makinelere 1GB surucu ve nouveau blacklist'i tasimanin anlami yok.
+ARG NVIDIA_ENABLED="0"
+
+# Derleme sirasinda scriptlerin gorecegi degerler
+ENV OS_NAME="${OS_NAME}" \
+    OS_PRETTY_NAME="${OS_PRETTY_NAME}" \
+    IMAGE_REF="${IMAGE_REF}" \
+    FEDORA_VERSION="${FEDORA_VERSION}" \
+    NVIDIA_ENABLED="${NVIDIA_ENABLED}"
+
+# ---------------------------------------------------------------
+# Dosyalar ve derleme
+# ---------------------------------------------------------------
+# files/ icerigi dogrudan kok dizine kopyalanir (/usr ve /etc).
+COPY files/ /
+COPY build_files/ /tmp/build_files/
+
+RUN --mount=type=cache,dst=/var/cache/libdnf5,sharing=locked \
+    --mount=type=cache,dst=/var/cache/dnf,sharing=locked \
+    chmod -R +x /tmp/build_files && \
+    /tmp/build_files/build.sh
+
+# ---------------------------------------------------------------
+# Temizlik + dogrulama
+# ---------------------------------------------------------------
+# bootc /var'in imajda bos olmasini bekler: /var calisma zamaninda
+# makineye ait, imaja ait degil. Burayi atlarsan kurulum bozulur.
+RUN rm -rf /tmp/* /var/tmp/* && \
+    find /var/log -type f -delete 2>/dev/null || true && \
+    if command -v bootc >/dev/null 2>&1; then \
+        bootc container lint --fatal-warnings; \
+    else \
+        echo "UYARI: taban imajda bootc ikilisi yok, lint atlandi"; \
+    fi
+
+LABEL org.opencontainers.image.title="${OS_PRETTY_NAME}" \
+      org.opencontainers.image.description="Immutable, imzali masaustu isletim sistemi" \
+      org.opencontainers.image.source="${IMAGE_REF}" \
+      org.opencontainers.image.version="${IMAGE_TAG}" \
+      org.opencontainers.image.licenses="MIT" \
+      containers.bootc="1"
