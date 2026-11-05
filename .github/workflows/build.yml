@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: Kaynagi al
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # GitHub kullanici adi buyuk harf iceriyor (McahitKutsal) ama GHCR
       # yollari kucuk harf olmak zorunda. Bunu cevirmezsen push reddedilir.
@@ -55,7 +55,7 @@ jobs:
       - name: Disk alani ac
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           docker-images: true
 
       - name: Etiketleri hesapla

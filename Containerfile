@@ -62,8 +62,9 @@ RUN --mount=type=cache,dst=/var/cache/libdnf5,sharing=locked \
 # ---------------------------------------------------------------
 # bootc /var'in imajda bos olmasini bekler: /var calisma zamaninda
 # makineye ait, imaja ait degil. Burayi atlarsan kurulum bozulur.
-RUN rm -rf /tmp/* /var/tmp/* /run/* 2>/dev/null || true; \
+RUN rm -rf /tmp/* /var/tmp/* /run/* /var/lib/dnf /var/lib/rpm-state 2>/dev/null || true; \
     find /var -mindepth 1 -type f -delete 2>/dev/null || true; \
+    find /var -mindepth 1 -type d -empty -delete 2>/dev/null || true; \
     if command -v bootc >/dev/null 2>&1; then \
         bootc container lint --fatal-warnings; \
     else \
