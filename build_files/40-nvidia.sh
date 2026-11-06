@@ -9,12 +9,52 @@ set -euo pipefail
 PKG="dnf5"
 command -v dnf5 >/dev/null 2>&1 || PKG="dnf"
 
-# RPM Fusion nonfree deposu 10-packages.sh'te eklendi.
-${PKG} -y install \
-    akmod-nvidia \
-    xorg-x11-drv-nvidia-cuda \
+# Zaten kurulu paketleri istemek dnf5'te tum islemi dusuruyor. Depoda
+# olmayan bir paket de ayni sekilde dusuruyor. Ikisini de onceden eliyoruz.
+pkg_installed() { rpm -q "$1" >/dev/null 2>&1; }
+pkg_available() { ${PKG} repoquery --quiet "$1" 2>/dev/null | grep -q .; }
+
+# Olmazsa derlemeyi durdururuz: bunlar olmadan GPU hic calismaz.
+install_required() {
+    local pkg missing=()
+    for pkg in "$@"; do
+        pkg_installed "${pkg}" && continue
+        if ! pkg_available "${pkg}"; then
+            echo "HATA: zorunlu paket depoda yok: ${pkg}" >&2
+            echo "      RPM Fusion paketi yeniden adlandirmis olabilir." >&2
+            exit 1
+        fi
+        missing+=("${pkg}")
+    done
+    [[ ${#missing[@]} -eq 0 ]] && { echo "  (zorunlular zaten kurulu)"; return 0; }
+    echo "  kurulacak: ${missing[*]}"
+    ${PKG} -y install "${missing[@]}"
+}
+
+# Olmazsa uyarip devam ederiz. RPM Fusion paket adlarini ara sira
+# degistiriyor (nvidia-vaapi-driver -> libva-nvidia-driver gibi); ikincil
+# paketler yuzunden tum derlemeyi kaybetmiyoruz.
+install_optional() {
+    local pkg missing=() skipped=()
+    for pkg in "$@"; do
+        pkg_installed "${pkg}" && continue
+        if pkg_available "${pkg}"; then missing+=("${pkg}"); else skipped+=("${pkg}"); fi
+    done
+    [[ ${#skipped[@]} -gt 0 ]] && echo "  UYARI: depoda yok, atlandi: ${skipped[*]}"
+    [[ ${#missing[@]} -eq 0 ]] && return 0
+    echo "  kurulacak: ${missing[*]}"
+    ${PKG} -y install "${missing[@]}"
+}
+
+echo "==> NVIDIA surucusu (zorunlu)"
+install_required akmod-nvidia xorg-x11-drv-nvidia-cuda
+
+echo "==> Ek bilesenler (opsiyonel)"
+# xorg-x11-drv-nvidia-power: laptop suspend/resume icin onemli
+# libva-nvidia-driver: VA-API donanim kod cozme (eski adi nvidia-vaapi-driver)
+install_optional \
     xorg-x11-drv-nvidia-power \
-    nvidia-vaapi-driver \
+    libva-nvidia-driver \
     libva-utils \
     vulkan-loader
 
