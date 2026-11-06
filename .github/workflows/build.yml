@@ -52,11 +52,24 @@ jobs:
 
       # GitHub runner'larinda OS imaji derlemek icin yer yetmez.
       # NVIDIA varyanti ayrica ~1.5GB ekliyor.
+      # NVIDIA varyanti akmod ile birlikte cekirdek derleme araclarini da
+      # cekiyor (kernel-devel, gcc, rpm-build) — temel varyanttan ~2GB fazla.
+      # Runner'daki varsayilan ~14GB yetmiyor.
       - name: Disk alani ac
         uses: jlumbroso/free-disk-space@main
         with:
           preinstalled-runtimes: true
           docker-images: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          # Takas alanini BIRAKIYORUZ: rpm islemleri bellek yiyor, OOM
+          # riskini disk icin almaya degmez.
+          swap-storage: false
+
+      - name: Disk durumu
+        run: df -h / /home 2>/dev/null || df -h
 
       - name: Etiketleri hesapla
         id: meta
