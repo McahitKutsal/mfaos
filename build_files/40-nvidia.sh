@@ -46,6 +46,20 @@ install_optional() {
     ${PKG} -y install "${missing[@]}"
 }
 
+# Fedora 44 tuzagi: akmod paketlerinin %post scriptlet'i bootc
+# imajlarinda tum rpm islemini dusuruyor. Sebep akmods-ostree-post'un
+# ostree tespiti — bootc imajinda /run/ostree-booted YOK ama os-release
+# icinde OSTREE_VERSION VAR. Bu tutarsizlik scriptlet'i "simdi derle"
+# yoluna sokuyor, akmodsbuild root olarak calismayi reddediyor, islem
+# "Transaction failed" ile oluyor.
+#
+# kmodtool bakicisinin onerdigi gecici cozum: kurulum sirasinda dosyayi
+# var gibi goster. Scriptlet derlemeyi erteliyor, modulu asagida biz
+# kendimiz derliyoruz.
+# https://bugzilla.redhat.com/show_bug.cgi?id=2459819
+touch /run/ostree-booted
+trap 'rm -f /run/ostree-booted' EXIT
+
 echo "==> NVIDIA surucusu (zorunlu)"
 install_required akmod-nvidia xorg-x11-drv-nvidia-cuda
 
@@ -63,7 +77,13 @@ install_optional \
 KERNEL="$(rpm -q kernel-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}\n' | tail -1)"
 echo "Hedef cekirdek: ${KERNEL}"
 
-akmods --force --kernels "${KERNEL}"
+# Ertelenen derlemeyi simdi kendimiz yapiyoruz. Dosyayi once
+# kaldiriyoruz, yoksa akmods da "ostree sistemi" sanip derlemeyi atlar.
+# --kmod nvidia: sadece ihtiyacimiz olani derle.
+rm -f /run/ostree-booted
+trap - EXIT
+
+akmods --force --kernels "${KERNEL}" --kmod nvidia
 
 # Dogrulama. Bu kontrol olmazsa acilmayan bir imaji farkinda olmadan
 # yayinlarsin — ve filodaki NVIDIA makineleri sabaha siyah ekranda bulursun.
