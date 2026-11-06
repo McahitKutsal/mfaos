@@ -61,4 +61,31 @@ done
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -qf /usr/share/icons/hicolor 2>/dev/null || true
 fi
+
+# GDM logoyu genis bir seride yerlestiriyor; kare amblem orada kucuk
+# kalir. Iki mekanizma var: gdm paketinin gschema override'i dogrudan
+# /usr/share/pixmaps/fedora-gdm-logo.png dosyasini gosteriyor, ayrica
+# dconf'ta org.gnome.login-screen logo anahtari var. Dosyayi degistirip
+# ayari da yazinca hangisinin kazandigi onemsizlesiyor.
+GDM_LOGO="/usr/share/pixmaps/mfaos.png"
+if [[ -f "${LOGO_DIR}/wide-128.png" ]]; then
+    GDM_LOGO="/usr/share/pixmaps/mfaos-wide.png"
+    shopt -s nullglob
+    for g in /usr/share/pixmaps/*gdm*logo*.png; do
+        cp -f "${LOGO_DIR}/wide-128.png" "${g}"
+        echo "  giris ekrani logosu: ${g}"
+    done
+    shopt -u nullglob
+else
+    echo "  yatay logo yok, giris ekrani kare logoyu kullanacak"
+fi
+
+install -d /etc/dconf/db/gdm.d
+cat > /etc/dconf/db/gdm.d/95-mfaos-logo <<EOF
+[org/gnome/login-screen]
+logo='${GDM_LOGO}'
+EOF
+
+command -v dconf >/dev/null 2>&1 && { dconf update 2>/dev/null || true; }
+
 exit 0

@@ -5,10 +5,16 @@
 set -euo pipefail
 
 SRC="${1:-logo.png}"
+WIDE="${2:-}"
 NAME="mfaos"
 SIZES=(16 22 24 32 48 64 72 96 128 192 256 512)
+WIDE_HEIGHTS=(64 128 192)
 
 [[ -f "${SRC}" ]] || { echo "HATA: ${SRC} bulunamadi." >&2; exit 1; }
+if [[ -n "${WIDE}" && ! -f "${WIDE}" ]]; then
+    echo "HATA: yatay logo ${WIDE} bulunamadi." >&2
+    exit 1
+fi
 
 MAGICK="$(command -v magick || command -v convert || true)"
 [[ -n "${MAGICK}" ]] || { echo "HATA: sudo apt install -y imagemagick" >&2; exit 1; }
@@ -58,3 +64,13 @@ done
 install -Dm644 "${OUT}/logo.svg" \
     "files/usr/share/icons/hicolor/scalable/apps/${NAME}.svg"
 echo "Tamam."
+
+if [[ -n "${WIDE}" ]]; then
+    for h in "${WIDE_HEIGHTS[@]}"; do
+        "${MAGICK}" "${WIDE}" -resize "x${h}" "${OUT}/wide-${h}.png"
+    done
+    install -Dm644 "${OUT}/wide-128.png" "files/usr/share/pixmaps/${NAME}-wide.png"
+    echo "Yatay logo: ${WIDE} -> ${#WIDE_HEIGHTS[@]} boyut uretildi"
+else
+    echo "Yatay logo verilmedi — giris ekrani kare logoyu kullanacak."
+fi

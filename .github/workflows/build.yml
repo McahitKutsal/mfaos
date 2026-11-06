@@ -94,6 +94,18 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v3
 
+      # cosign, push adiminin kimlik bilgilerini GORMUYOR: buildah/podman
+      # kimligi ${XDG_RUNTIME_DIR}/containers/auth.json'a yaziyor, cosign
+      # ise go-containerregistry kullandigi icin ~/.docker/config.json
+      # okuyor. Push kimlikli gidiyor ama imza yuklemesi anonim kaliyor.
+      - name: cosign'i GHCR'ye baglat
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | cosign login ghcr.io \
+            -u "${{ github.actor }}" --password-stdin
+
       # Zincirin tamamini anlamli kilan adim bu. Imzalamazsan
       # makinelerin policy.json'u imaji reddeder — ki istedigimiz
       # tam olarak o: imzasiz imaj asla boot etmez.
