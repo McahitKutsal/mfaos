@@ -30,6 +30,10 @@ FROM ${BASE_IMAGE}:${FEDORA_VERSION}
 ARG OS_NAME="mfaos"
 ARG OS_PRETTY_NAME="mfaOS"
 ARG IMAGE_REF="ghcr.io/mcahitkutsal/mfaos"
+
+# mfaOS'un KENDI surumu — Fedora'nin surumunden bagimsiz.
+# Henuz erken asama; anlamli bir surum gelene kadar 0.x.
+ARG OS_VERSION="0.1"
 ARG FEDORA_VERSION
 ARG IMAGE_TAG="${FEDORA_VERSION}"
 
@@ -43,7 +47,8 @@ ENV OS_NAME="${OS_NAME}" \
     OS_PRETTY_NAME="${OS_PRETTY_NAME}" \
     IMAGE_REF="${IMAGE_REF}" \
     FEDORA_VERSION="${FEDORA_VERSION}" \
-    NVIDIA_ENABLED="${NVIDIA_ENABLED}"
+    NVIDIA_ENABLED="${NVIDIA_ENABLED}" \
+    OS_VERSION="${OS_VERSION}"
 
 # ---------------------------------------------------------------
 # Dosyalar ve derleme
