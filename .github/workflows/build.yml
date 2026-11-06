@@ -35,9 +35,21 @@ jobs:
           - variant: base
             image: mfaos
             nvidia: "0"
-          - variant: nvidia
-            image: mfaos-nvidia
-            nvidia: "1"
+          # NVIDIA varyanti gecici olarak kapali.
+          #
+          # Engel: Fedora 44'te akmod paketlerinin %post scriptlet'i bootc
+          # konteyner derlemesinde patliyor. akmodsbuild'in kontrolu
+          # `[[ -w / ]]` — / dizininin yazilabilir olup olmadigina bakiyor.
+          # Gercek ostree sisteminde / salt okunur oldugu icin gecer,
+          # konteynerde yazilabilir oldugu icin her zaman patlar.
+          # https://bugzilla.redhat.com/show_bug.cgi?id=2459819
+          #
+          # Cozum yolu: ublue-os/akmods'un onceden derlenmis kmod RPM'lerini
+          # cok asamali derlemeyle kopyalamak. Acmak icin alttaki uc satiri ac.
+          #
+          # - variant: nvidia
+          #   image: mfaos-nvidia
+          #   nvidia: "1"
 
     name: ${{ matrix.image }}
 
