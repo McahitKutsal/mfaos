@@ -91,6 +91,76 @@ DISK_CONFIG=disk-config.toml ./test.sh vm   # gercek kurulum duzeniyle
 
 ---
 
+## Katman 4: guncelleme ve geri donus testi
+
+Bunlar **VM'in icinde** calisiyor — `./test.sh boot` ile acilan
+pencerede, host'ta degil. Betigi VM'e almak icin (sshd bilerek kapali,
+depo public):
+
+```bash
+curl -sSLO https://raw.githubusercontent.com/McahitKutsal/mfaos/main/rollback-test.sh
+chmod +x rollback-test.sh
+```
+
+### 0. Guncelleme kaynagini duzelt — atlarsan 2. adim patlar
+
+VM yerelde derlenmis imajdan kuruldugu icin bootc'nin kayitli kaynagi
+`localhost/mfaos:44` ve bu VM icinden **cozulemez**. Bir kez:
+
+```bash
+sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44
+sudo systemctl reboot
+```
+
+Bu adim bedavaya **imza zincirini de** sinar: `policy.json`
+sigstoreSigned istiyor, ortak anahtar `/etc/pki/containers/mfaos.pub`.
+Imaj reddedilirse zincirde sorun var ve bunu burada ogrenirsin.
+
+### 1. Zincir ayakta mi
+
+```bash
+sudo ./rollback-test.sh status
+```
+
+Deployment'lari, greenboot servislerini, saglik kontrolunun bu
+acilista gercekten kosup kostugunu ve GRUB'un `boot_success` /
+`boot_counter` degiskenlerini raporluyor.
+
+### 2. ELLE geri donus
+
+```bash
+sudo bootc upgrade && bootc status     # yeni surum "staged" gorunmeli
+sudo systemctl reboot
+# Ayarlar > Sistem Hakkinda: yeni surum
+sudo bootc rollback && sudo systemctl reboot
+```
+
+### 3. OTOMATIK geri donus — asil test
+
+Ikisi ayri sey: elle geri donus calisiyor diye otomatigi calisiyor
+sanma. Otomatik olan GRUB'un `boot_counter`'i kalici yazmasina bagli.
+
+```bash
+sudo ./rollback-test.sh arm      # kasitli basarisiz saglik kontrolu
+sudo bootc upgrade
+sudo systemctl reboot
+```
+
+Beklenen: yeni deployment 3 kez acilmayi dener, her denemede
+`boot_counter` iner, sifira varinca **onceki deployment** acilir.
+Sonra:
+
+```bash
+sudo ./rollback-test.sh status
+sudo ./rollback-test.sh disarm
+```
+
+Kontrol 3 basarisizliktan sonra kendini kapatiyor, yani VM saglikli
+bir acilisa mutlaka ulasiyor — kilitlenme yok. `disarm` yine de
+gerekli: sayac /var'da duruyor.
+
+---
+
 ## Logolari yeniden uret
 
 Sadece logo kaynagi degistiginde gerekiyor; cikti depoya commit ediliyor.

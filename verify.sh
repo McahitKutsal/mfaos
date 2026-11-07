@@ -137,6 +137,18 @@ else
     ok "greenboot varsayilan kontrolleri kurulu degil (bilincli)"
 fi
 
+# rollback-test.sh'in kasitli basarisiz kontrolu IMAJA SIZMAMALI. Onu
+# calisma aninda /etc'ye koyuyor, ama biri files/ altina commit ederse
+# her makine her acilista geri doner — tam olarak kacinmak istedigimiz
+# kesinti, hem de kendi elimizle. Yapisal olarak engelleyemiyoruz
+# (files/ serbest), o yuzden burada duruyor.
+if compgen -G "/etc/greenboot/check/required.d/*rollback-test*" >/dev/null 2>&1 \
+   || compgen -G "/usr/lib/greenboot/check/required.d/*rollback-test*" >/dev/null 2>&1; then
+    bad "imajda kasitli basarisiz test kontrolu var — her makine geri doner"
+else
+    ok "imajda kasitli basarisiz test kontrolu yok"
+fi
+
 # ---------------------------------------------------------------
 head_ "4. Paketler"
 # ---------------------------------------------------------------

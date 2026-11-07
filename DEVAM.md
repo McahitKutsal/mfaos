@@ -37,11 +37,12 @@ Fedora 44'teki `fedora-logos-42.0.1-3` icin; paket surumu degisirse
 
 ### HENUZ TEST EDILMEMIS — en onemli eksik
 
-**Katman 4: guncelleme ve geri alma.** Mimarinin butun vaadi bu ve bir
-kez bile denenmedi. Otomatik geri donus artik *kurulu* (greenboot,
-`build_files/25-rollback.sh`) — ama kurulu olmasi calistigi anlamina
-gelmiyor. Su an "dogru tasarlanmis" bir sistem var, "robust"
-oldugunun kaniti yok.
+**Katman 4: guncelleme ve geri alma.** Mimarinin butun vaadi bu ve hala
+bir kez bile denenmedi. Otomatik geri donus *kurulu* (greenboot,
+`build_files/25-rollback.sh`) ve `verify.sh` kurulumun dogrulugunu
+onayliyor — ama kurulu olmasi calistigi anlamina gelmiyor. Test araci
+artik hazir (`rollback-test.sh`, bkz. Adim 2); eksik olan tek sey onu
+VM'de kosturmak.
 
 **Katman 5: gercek donanim.** Hicbir fiziksel makineye kurulmadi.
 
@@ -83,54 +84,44 @@ podman pull ghcr.io/mcahitkutsal/mfaos:44
 
 ### Adim 2 — Katman 4: guncelleme ve geri alma testi
 
-Projenin en kritik eksik testi. VM'de:
+Projenin en kritik eksik testi. Araclar artik hazir: `rollback-test.sh`
+VM'in icinde kosup zincirin durumunu raporluyor. Komut dizisi
+`KOMUTLAR.md`'de; burada **neden** oyle oldugu.
 
-```bash
-# 1. VM'i ghcr'deki imzali imaja bagla.
-#    Bu komut ayni zamanda imza zincirinin ILK gercek sinavi:
-#    policy.json imzayi dogrulayamazsa burada durur.
-sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44
-sudo systemctl reboot
+**Sifir numarali adim atlanamaz.** VM yerelde derlenmis imajdan
+kuruldugu icin bootc'nin kayitli guncelleme kaynagi `localhost/mfaos:44`
+ve bu VM icinden cozulemez — `bootc upgrade` daha ilk adimda patlar.
+`sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44` ile bir kez duzeltmek
+gerekiyor, ve o komut ayni zamanda imza zincirinin ilk gercek sinavi:
+`policy.json` imzayi dogrulayamazsa orada durur.
 
-# 2. Gorunur bir degisiklik yap (ornek: OS_VERSION'i 0.2 yap),
-#    push et, CI'in yesil olmasini bekle. Sonra VM'de:
-sudo bootc upgrade
-bootc status          # yeni surum "staged" gorunmeli
-sudo systemctl reboot
-# Ayarlar -> Hakkinda: 0.2 gorunmeli
+**Iki ayri sey test ediliyor, karistirmamak lazim.** `bootc rollback`
+**elle** geri donus; greenboot ise **otomatik** geri donus. Ilki
+calisiyor diye ikincisi calisiyor sanma — ikincisi GRUB'un
+`boot_counter` degiskenini KALICI yazabilmesine bagli ve bunu ancak
+acilmis sistemde gorebiliyorsun (`rollback-test.sh status`, 3. bolum).
 
-# 3. Geri alma
-sudo bootc rollback
-sudo systemctl reboot
-# 0.1'e donmus olmali
-```
+**Bozuk imaj YAYINLAMIYORUZ.** Ilk plan bilerek bozuk bir imaj uretip
+push etmekti; gerekmiyor. greenboot ozel kontrolleri
+`/etc/greenboot/check/required.d`'den de okuyor (`/usr/lib` ostree'de
+salt okunur), yani oraya bilerek basarisiz bir kontrol koymak AYNI
+mekanizmayi sinar. Kazanci:
 
-**Asil test bundan sonrasi:** bilerek bozuk bir imaj yayinla (ornegin
-**Asil test bundan sonrasi.** Otomatik geri donus artik kurulu
-(`greenboot` — bkz. `build_files/25-rollback.sh`) ama bir kez bile
-calistigi gorulmedi. Sirayla:
+- bozuk imaj registry'e hic cikmiyor — gunluk timer onu makinelere
+  dagitabilirdi,
+- manuel imzalama derdi yok (imzasiz imaji policy.json reddederdi),
+- test tek komutla kurulup kaldiriliyor.
 
-```bash
-# a. Zincir ayakta mi?
-systemctl is-enabled greenboot-healthcheck.service \
-                     greenboot-set-rollback-trigger.service
-journalctl -u greenboot-healthcheck.service -b
+**Test kontrolu kendini sinirliyor, ve bu sart.** `/etc` bir sonraki
+deployment'a merge ile tasiniyor — ama GERI DONUS HEDEFINDE de ayni
+dosya var. Kendini kapatmasa makine saglikli bir acilisa hic ulasmaz ve
+kendi VM'ini kilitlersin. Sayac `/var`'da duruyor cunku `/var`
+deployment'lar arasinda PAYLASILIYOR: geri donusten sonra da ayni sayac
+okunuyor ve kontrol kendini kapatabiliyor.
 
-# b. Saglikli acilistan sonra sayac temizlenmis mi?
-sudo grub2-editenv - list | grep boot_   # boot_success=1, boot_counter YOK
+`verify.sh` o kontrolun imaja sizmadigini ayrica dogruluyor — `files/`
+altina commit edilirse her makine her acilista geri donerdi.
 
-# c. Simdi bilerek bozuk bir imaj yayinla.
-#    Derleme GECMELI ama sistem acilmamali — `exit 1` koymak ise
-#    yaramaz, derlemeyi kirar. Dogru kirma yollari: gecersiz bir
-#    cekirdek argumani, ya da gdm'i acilmaz hale getirmek.
-#    Guncelle, reboot et, izle: makine 3 denemeden sonra 0.1'e donmeli.
-```
-
-Burada iki ayri sey test ediliyor, ikisini karistirmamak lazim:
-`bootc rollback` **elle** geri donus (yukaridaki 3. adim), greenboot
-ise **otomatik** geri donus. Ilki calisiyor diye ikincisi calisiyor
-sanma — ikincisi GRUB'un `boot_counter` degiskenini kalici
-yazabilmesine bagli ve bu henuz dogrulanmadi.
 ### Adim 3 — Katman 5: gercek makineye kurulum
 
 **Once cevaplanmasi gereken soru:** feda edilebilir bir test makinesi
@@ -423,6 +414,7 @@ logo/                       logo kaynaklari (imaja girmez)
 add-logo.sh                 logo boyutlarini uretir (WHITE= ile beyaz varyant)
 preflight.sh                gelistirme ortami kontrolu
 test.sh                     build | verify | shell | vm | boot | all
+rollback-test.sh            VM ICINDE kosar: geri donus zinciri calisiyor mu
 verify.sh                   imaj icinde calisir; kontrol sayisini kendi yazar
 disk-config.toml            gercek kurulum disk duzeni (kullanici tanimi YOK)
 disk-config.test.toml       QEMU testi — sudo yetkili test/test hesabi burada
