@@ -24,6 +24,12 @@ head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 CHECK=/etc/greenboot/check/required.d/99-mfaos-rollback-test.sh
 COUNT=/var/lib/mfaos-rollback-test.count
+BEFORE=/var/lib/mfaos-rollback-test.before
+
+# Hangi imajda oldugumuzu kendi alanimizdan okuyoruz. bootc status JSON
+# semasini tahmin etmek yerine 50-branding.sh'in yazdigi alani
+# kullaniyoruz: adi bize ait, degismesi bizim elimizde.
+build_id() { grep -h "^MFAOS_BUILD_DATE=" /usr/lib/os-release 2>/dev/null | cut -d= -f2- | tr -d '"'; }
 
 # Yanlis makinede calistirilmamali: `arm` bilerek basarisiz boot uretir.
 # ostree ile acilmis bir sistem degilsek hemen duruyoruz.
@@ -157,6 +163,25 @@ cmd_status() {
     fi
 
     head_ "5. Test kontrolu"
+    # Asil hukum. "Sonunda acildi" hicbir sey kanitlamiyor: kontrol
+    # kendini kapattigi icin geri donus olsa da olmasa da aciliyor.
+    # Ayirt eden tek sey HANGI deployment'in acildigi.
+    if [[ -f "${BEFORE}" ]]; then
+        local before now
+        before="$(cat "${BEFORE}" 2>/dev/null)"
+        now="$(build_id)"
+        info "arm aninda: ${before:-?}"
+        info "su an:      ${now:-?}"
+        if [[ -z "${before}" || -z "${now}" ]]; then
+            warn "imaj kimligi okunamadi, hukum verilemiyor"
+        elif [[ "${before}" == "${now}" ]]; then
+            ok "GERI DONUS GERCEKLESTI — arm oncesi deployment'tasin"
+        else
+            bad "geri donus OLMADI — yeni deployment'ta acilmissin"
+            info "greenboot kontrolu basarisizdi ama GRUB geri donmedi"
+        fi
+    fi
+
     if [[ -f "${CHECK}" ]]; then
         local n
         n="$(cat "${COUNT}" 2>/dev/null || echo 0)"
@@ -185,6 +210,10 @@ cmd_arm() {
     # da ayni sayac okunuyor.
     install -d "$(dirname "${CHECK}")" /var/lib
     rm -f "${COUNT}"
+    # Testin sonucu "acildi mi" ile OLCULEMEZ: kontrol kendini kapattigi
+    # icin geri donus olsa da olmasa da sonunda aciliyor. Olculebilir
+    # tek sey HANGI deployment acildigi, o yuzden simdikini kaydediyoruz.
+    build_id > "${BEFORE}"
 
     cat > "${CHECK}" <<'CHK'
 #!/usr/bin/env bash
@@ -223,7 +252,7 @@ CHK
 cmd_disarm() {
     require_ostree
     require_root
-    rm -f "${CHECK}" "${COUNT}"
+    rm -f "${CHECK}" "${COUNT}" "${BEFORE}"
     echo "Test kontrolu ve sayac kaldirildi."
     echo "Bir sonraki acilista saglik kontrolu normale doner."
 }
