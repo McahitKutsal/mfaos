@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sistem kimligi: makine kendini "Fedora Linux" degil "mfaOS" olarak tanitsin.
+# Sistem kimligi: makine kendini "Fedora Linux" degil "MFAOS" olarak tanitsin.
 #
 # ONEMLI: ID=fedora oldugu gibi kaliyor. RPM Fusion depo yapilandirmalari,
 # Flatpak runtime eslestirmesi ve ucuncu parti kurulum scriptleri bu alana
@@ -53,5 +53,20 @@ rm -f "${NEW}"
 if [[ -n "${LOGO_KEY}" ]] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -qf /usr/share/icons/hicolor 2>/dev/null || true
 fi
+
+# Aygit adi. GNOME'un "Sistem Hakkinda > Aygit Adi" satirini
+# cc_hostname_get_display_hostname() belirliyor: once PRETTY_HOSTNAME'e
+# bakiyor, yoksa hostname'e dusuyor. Ikisi de ayarli degilse makine
+# kendini "fedora" diye tanitiyor.
+#
+# Ikisini birden yaziyoruz, GNOME'un kendi donusumuyle ayni bicimde:
+# gosterilen ad MFAOS, agda ve kabukta kullanilan ad mfaos. (O satiri
+# Ayarlar'dan duzenledigin anda GNOME zaten pretty_hostname_to_static
+# ile tam bunu yapiyor.)
+#
+# Bunlar VARSAYILAN, kilit degil: kullanici Ayarlar'dan degistirebilir.
+echo "${OS_NAME}" > /etc/hostname
+printf 'PRETTY_HOSTNAME="%s"\n' "${OS_PRETTY_NAME}" > /etc/machine-info
 echo "Kimlik: $(grep '^PRETTY_NAME=' /usr/lib/os-release)"
+echo "Aygit adi: ${OS_PRETTY_NAME} (hostname: ${OS_NAME})"
 exit 0

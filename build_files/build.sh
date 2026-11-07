@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "==> ${OS_PRETTY_NAME:-mfaos} derleniyor (Fedora ${FEDORA_VERSION:-?})"
+echo "==> ${OS_PRETTY_NAME:-MFAOS} derleniyor (Fedora ${FEDORA_VERSION:-?})"
 echo "==> NVIDIA: ${NVIDIA_ENABLED:-0}"
 
 for script in "${SCRIPT_DIR}"/[0-9][0-9]-*.sh; do

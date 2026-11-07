@@ -28,10 +28,10 @@ FROM ${BASE_IMAGE}:${FEDORA_VERSION}
 # Kimlik — burayi kendine gore degistir
 # ---------------------------------------------------------------
 ARG OS_NAME="mfaos"
-ARG OS_PRETTY_NAME="mfaOS"
+ARG OS_PRETTY_NAME="MFAOS"
 ARG IMAGE_REF="ghcr.io/mcahitkutsal/mfaos"
 
-# mfaOS'un KENDI surumu — Fedora'nin surumunden bagimsiz.
+# MFAOS'un KENDI surumu — Fedora'nin surumunden bagimsiz.
 # Henuz erken asama; anlamli bir surum gelene kadar 0.x.
 ARG OS_VERSION="0.1"
 ARG FEDORA_VERSION

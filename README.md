@@ -1,4 +1,4 @@
-# mfaos
+# MFAOS
 
 Degismez (immutable), imzali, atomik guncellenen bir GNOME masaustu
 isletim sistemi. Fedora Silverblue tabani uzerine kurulu, `bootc` ile

@@ -210,11 +210,28 @@ else
 fi
 
 # --- Kimlik ---
-if grep -q '^PRETTY_NAME=.*mfaOS' /usr/lib/os-release 2>/dev/null; then
+if grep -qi '^PRETTY_NAME=.*mfaos' /usr/lib/os-release 2>/dev/null; then
     ok "sistem kimligi: $(. /usr/lib/os-release; echo "${PRETTY_NAME}")"
 else
     warn "os-release hala Fedora olarak gorunuyor"
 fi
+
+# Aygit adi. Ayarlar > Sistem Hakkinda'daki "Aygit Adi" satiri once
+# PRETTY_HOSTNAME'e bakiyor, yoksa hostname'e dusuyor; ikisi de yoksa
+# makine kendini "fedora" diye tanitiyor. Kimlik bolumunun geri kalani
+# gibi bunlar da uyari seviyesinde: yanlis ad imaji kullanilamaz
+# yapmiyor, ama sessizce gecmesini de istemiyoruz.
+if grep -qi '^PRETTY_HOSTNAME=.*mfaos' /etc/machine-info 2>/dev/null; then
+    ok "aygit adi: $(. /etc/machine-info; echo "${PRETTY_HOSTNAME}")"
+else
+    warn "PRETTY_HOSTNAME yok — Ayarlar'da aygit adi 'fedora' gorunur"
+fi
+
+HN="$(cat /etc/hostname 2>/dev/null || true)"
+case "${HN}" in
+    ""|fedora|localhost*) warn "hostname '${HN:-bos}' — Fedora varsayilani kalmis" ;;
+    *)                    ok "hostname: ${HN}" ;;
+esac
 
 # ID=fedora kalmali: RPM Fusion, Flatpak ve ucuncu parti scriptler bu
 # alana bakiyor. Degismisse paket yonetimi sessizce bozulur.

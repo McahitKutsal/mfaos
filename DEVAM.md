@@ -21,10 +21,13 @@ Son guncelleme: 7 Kasim 2026
 | 3 — QEMU'da boot | Tamam |
 | CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Dogrulama adimi yeni, CI'da denenmedi |
 
-Imaj GNOME masaustu olarak aciliyor, kendini `mfaOS 0.1` diye
-tanitiyor, Turkce arayuz ve Turkce Q klavye ile geliyor, Fedora
-logolari kendi armamizla degismis durumda. Giris ekraninda yatay logo,
-geri kalan her yerde kare arma.
+Imaj GNOME masaustu olarak aciliyor, kendini `MFAOS 0.1` diye
+tanitiyor, aygit adi `MFAOS` (hostname `mfaos`), Turkce arayuz ve
+Turkce Q klavye ile geliyor, Fedora logolari kendi armamizla degismis
+durumda. Giris ekraninda yatay logo, geri kalan her yerde kare arma.
+GNOME'un bagis bildirimi ve Sistem Hakkinda'daki bagis kutucugu
+kaldirilmis; kutucugun gittigi ve logonun bizim oldugu QEMU'da
+gozle dogrulandi.
 
 fedora-logos'un 143 PNG/SVG'sinden 81'i degisiyor, 62'si kasitli olarak
 korunuyor — plymouth animasyonu, anaconda arka planlari ve kurulum
@@ -343,6 +346,19 @@ denemede derleme tam burada atladi. Adim paketi gecici kuruyor ve ayni
 betikte kaldiriyor; derlemenin tamami tek `RUN` katmani oldugu icin
 imajda iz kalmiyor. Kaldirma `|| true` ile cagrildigi icin `verify.sh`
 paketin gercekten gittigini ayrica kontrol ediyor.
+
+
+**Buyuk/kucuk harf ayrimi kasitli: `MFAOS` gorunen ad, `mfaos`
+tanimlayici.** `OS_PRETTY_NAME=MFAOS` os-release'in
+NAME/PRETTY_NAME/VARIANT alanlarina ve `PRETTY_HOSTNAME`'e gidiyor —
+kullanicinin gordugu her yer. `OS_NAME=mfaos` ise GHCR yollarina,
+dosya adlarina (`mfaos.pub`, `50-mfaos-desktop.sh`),
+`/usr/share/mfaos-logo`'ya, `LOGO=` ikon anahtarina ve hostname'e
+gidiyor. **Toptan arama-degistirme yapma:** GHCR yollari kucuk harf
+olmak ZORUNDA, ve `LOGO=` degeri kurulu ikon dosyasinin adiyla birebir
+eslesmek zorunda. `verify.sh`'in kimlik kontrolleri bu yuzden harf
+duyarsiz (`grep -qi`) — bir sonraki yeniden adlandirmada sessizce
+bozulmasinlar.
 
 **Ucuncu parti GitHub action'lari SHA'ya pinli olmali.** Derleme isi
 `COSIGN_PRIVATE_KEY` ve `packages: write` tasiyor. `@main` ile duran
