@@ -150,9 +150,9 @@ is_logo_asset() {
 dark_slots_unfilled=0
 
 is_dark_slot() {
-    local b="${1##*/}"
-    b="${b,,}"
-    case "${b}" in
+    local base="${1##*/}"
+    base="${base,,}"
+    case "${base}" in
         *whitelogo*|*darkbackground*|*-white.*) return 0 ;;
         watermark.png|*gdm*logo*)               return 0 ;;
     esac

@@ -191,6 +191,12 @@ vm() {
     local -a sb_args=()
     if [[ "${SECURE_BOOT}" == "1" ]]; then
         machine="q35,smm=on"
+        # Surucu adi (cfi.pflash01) nokta iceriyor, bu yuzden kisa
+        # `-global surucu.ozellik=deger` bicimi KULLANILAMAZ: QEMU ilk
+        # noktadan boluyor ve suruculeri "cfi" sanip hata veriyor. Uzun
+        # bicim zorunlu; buradaki virguller QEMU'nun -global sozdizimi,
+        # dizi ayraci degil.
+        # shellcheck disable=SC2054
         sb_args=(
             -global driver=cfi.pflash01,property=secure,value=on
             -global ICH9-LPC.disable_s3=1

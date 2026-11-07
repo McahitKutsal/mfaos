@@ -48,7 +48,7 @@ yapma**, 10 kat yavas.
 Commit ederek (normal yol):
 
 ```powershell
-git add -A; git commit -m "..."; git push    # Windows
+git add -A; git commit -m "<ne degistiyse>"; git push   # Windows
 ```
 ```bash
 cd ~/mfaos && git pull && ./test.sh boot     # WSL
