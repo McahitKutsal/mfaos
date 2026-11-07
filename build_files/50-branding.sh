@@ -17,7 +17,7 @@ else
     echo "Logo yok, Fedora logosu korunuyor"
 fi
 
-EXCLUDE='^(NAME|VERSION|PRETTY_NAME|VARIANT|VARIANT_ID|HOME_URL|BUG_REPORT_URL|SUPPORT_URL|DOCUMENTATION_URL|REDHAT_BUGZILLA_PRODUCT|REDHAT_BUGZILLA_PRODUCT_VERSION|REDHAT_SUPPORT_PRODUCT|REDHAT_SUPPORT_PRODUCT_VERSION'
+EXCLUDE='^(DEFAULT_HOSTNAME|NAME|VERSION|PRETTY_NAME|VARIANT|VARIANT_ID|HOME_URL|BUG_REPORT_URL|SUPPORT_URL|DOCUMENTATION_URL|REDHAT_BUGZILLA_PRODUCT|REDHAT_BUGZILLA_PRODUCT_VERSION|REDHAT_SUPPORT_PRODUCT|REDHAT_SUPPORT_PRODUCT_VERSION'
 [[ -n "${LOGO_KEY}" ]] && EXCLUDE="${EXCLUDE}|LOGO"
 EXCLUDE="${EXCLUDE})="
 
@@ -32,6 +32,7 @@ grep -v -E "${EXCLUDE}" /usr/lib/os-release \
     echo "VARIANT=\"${OS_PRETTY_NAME} ${OS_VERSION}\""
     echo "MFAOS_VERSION=\"${OS_VERSION}\""
     echo "VARIANT_ID=${OS_NAME}"
+    echo "DEFAULT_HOSTNAME=${OS_NAME}"
     echo "HOME_URL=\"${REPO_URL}\""
     echo "DOCUMENTATION_URL=\"${REPO_URL}\""
     echo "BUG_REPORT_URL=\"${REPO_URL}/issues\""
@@ -56,27 +57,32 @@ fi
 
 # Aygit adi. GNOME'un "Sistem Hakkinda > Aygit Adi" satirini
 # cc_hostname_get_display_hostname() belirliyor: once PRETTY_HOSTNAME'e
-# bakiyor, yoksa hostname'e dusuyor. Ikisi de ayarli degilse makine
-# kendini "fedora" diye tanitiyor.
+# bakiyor, yoksa hostname'e dusuyor.
 #
-# Ikisini birden yaziyoruz, GNOME'un kendi donusumuyle ayni bicimde:
-# gosterilen ad MFAOS, agda ve kabukta kullanilan ad mfaos. (O satiri
-# Ayarlar'dan duzenledigin anda GNOME zaten pretty_hostname_to_static
-# ile tam bunu yapiyor.)
+# PRETTY_HOSTNAME -> /etc/machine-info (gosterilen ad: MFAOS)
+# hostname        -> os-release'deki DEFAULT_HOSTNAME (agdaki ad: mfaos)
 #
-# Bunlar VARSAYILAN, kilit degil: kullanici Ayarlar'dan degistirebilir.
-echo "${OS_NAME}" > /etc/hostname
+# /etc/hostname'e YAZMIYORUZ ve yazamayiz: buildah da podman gibi
+# /etc/hostname, /etc/hosts ve /etc/resolv.conf dosyalarini bind-mount
+# ediyor, yani konteyner derlemesinde oraya yazilan sey KATMANA HIC
+# GIRMIYOR. Ilk denemede tam bu oldu: machine-info imaja girdi,
+# hostname girmedi ve makine kendini "fedora" diye tanitti.
+#
+# Dogru mekanizma os-release'in DEFAULT_HOSTNAME alani (systemd 248+):
+# "/etc/hostname yoksa ve baska bir kaynak belirtmiyorsa" kullanilan
+# deger. Image tabanli sistemler icin zaten bunun icin var.
+#
+# Ikisi de VARSAYILAN, kilit degil: kullanici Ayarlar'dan degistirince
+# /etc/hostname olusuyor ve o kazaniyor — istedigimiz de bu.
 printf 'PRETTY_HOSTNAME="%s"\n' "${OS_PRETTY_NAME}" > /etc/machine-info
 
-# Dogrulama burada, cunku verify.sh konteyner icinde calisiyor ve
-# podman /etc/hostname'i eziyor. Yazdiktan hemen sonra okuyoruz:
-# sessizce bos kalan bir hostname dosyasi makineyi "fedora" yapar.
-[[ "$(cat /etc/hostname 2>/dev/null)" == "${OS_NAME}" ]] || {
-    echo "HATA: /etc/hostname '${OS_NAME}' olarak yazilamadi." >&2
-    exit 1
-}
+# Dogrulama burada, cunku verify.sh konteyner icinde calisiyor.
 grep -q "^PRETTY_HOSTNAME=\"${OS_PRETTY_NAME}\"\$" /etc/machine-info || {
     echo "HATA: /etc/machine-info PRETTY_HOSTNAME yazilamadi." >&2
+    exit 1
+}
+grep -q "^DEFAULT_HOSTNAME=${OS_NAME}\$" /usr/lib/os-release || {
+    echo "HATA: os-release'e DEFAULT_HOSTNAME yazilamadi." >&2
     exit 1
 }
 echo "Kimlik: $(grep '^PRETTY_NAME=' /usr/lib/os-release)"

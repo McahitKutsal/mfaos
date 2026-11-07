@@ -239,21 +239,15 @@ else
     warn "PRETTY_HOSTNAME yok — Ayarlar'da aygit adi 'fedora' gorunur"
 fi
 
-# /etc/hostname'i buradan DOGRULAYAMIYORUZ: verify.sh podman run ile
-# calisiyor ve podman /etc/hostname'i kendi dosyasiyla bind-mount
-# ederek eziyor — okunan deger konteyner kimligi oluyor, imajdaki
-# deger degil. Yanlis bir "OK" basmak hic basmamaktan kotu, cunku
-# imajda "fedora" yazsa da gecerdi. Gercek dogrulama 50-branding.sh
-# icinde, dosyanin yazildigi yerde yapiliyor.
-if [[ -f /run/.containerenv || -n "${container:-}" ]]; then
-    printf '         hostname konteynerde dogrulanamaz (podman eziyor);\n'
-    printf '         50-branding.sh derleme aninda kontrol ediyor\n'
+# Agdaki/kabuktaki ad. /etc/hostname'e BAKMIYORUZ ve bakamayiz: podman
+# o dosyayi bind-mount ile eziyor (okunan deger konteyner kimligi olur),
+# ustelik buildah ayni seyi derleme zamaninda yaptigi icin dosya imaja
+# hic girmiyor. Dogru kaynak os-release'in DEFAULT_HOSTNAME alani —
+# ve o maskelenmiyor, yani buradan gercekten dogrulanabiliyor.
+if grep -q '^DEFAULT_HOSTNAME=' /usr/lib/os-release 2>/dev/null; then
+    ok "varsayilan hostname: $(. /usr/lib/os-release; echo "${DEFAULT_HOSTNAME}")"
 else
-    HN="$(cat /etc/hostname 2>/dev/null || true)"
-    case "${HN}" in
-        ""|fedora|localhost*) warn "hostname '${HN:-bos}' — Fedora varsayilani kalmis" ;;
-        *)                    ok "hostname: ${HN}" ;;
-    esac
+    warn "DEFAULT_HOSTNAME yok — makine kendini 'fedora' diye tanitir"
 fi
 
 # ID=fedora kalmali: RPM Fusion, Flatpak ve ucuncu parti scriptler bu

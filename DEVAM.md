@@ -368,6 +368,25 @@ kotudur: kontrol var saniyorsun. Bu yuzden hostname dogrulamasi
 `verify.sh`'te kalabildi. Yeni bir kontrol yazarken sor: bu dosyayi
 podman eziyor mu?
 
+**`/etc/hostname`'e konteyner derlemesinde YAZILAMAZ.** buildah de
+podman gibi `/etc/hostname`, `/etc/hosts` ve `/etc/resolv.conf`
+dosyalarini bind-mount ediyor; derleme adiminda oraya yazdigin sey
+katmana **hic girmiyor**, sessizce kayboluyor. Ilk denemede
+`50-branding.sh` iki satiri yan yana yaziyordu: `/etc/machine-info`
+imaja girdi, `/etc/hostname` girmedi, ve makine kendini `fedora` diye
+tanitmaya devam etti. Derleme basarili, kontrol yesil, sonuc yanlis.
+
+Dogru mekanizma os-release'in **`DEFAULT_HOSTNAME`** alani (systemd
+248+): "`/etc/hostname` yoksa ve baska bir kaynak belirtmiyorsa"
+kullanilan deger — image tabanli sistemler icin zaten bunun icin var.
+Kullanici Ayarlar'dan adi degistirirse `/etc/hostname` olusuyor ve o
+kazaniyor; istedigimiz de bu.
+
+Ayni maskeleme `verify.sh`'i de vurdu (bkz. ustteki podman tuzagi), ve
+imaji `podman run ... cat /etc/hostname` ile denetlemeye calismak da
+ayni sebepten konteyner kimligini veriyor. Katmani gercekten gormek
+icin `podman cp` gerekiyor — konteyneri calistirmadan kopyaliyor.
+
 **Ucuncu parti GitHub action'lari SHA'ya pinli olmali.** Derleme isi
 `COSIGN_PRIVATE_KEY` ve `packages: write` tasiyor. `@main` ile duran
 bir action, o branch'i kontrol eden herkese imzalama anahtarini
