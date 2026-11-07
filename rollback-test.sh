@@ -223,6 +223,10 @@ cmd_arm() {
 # 3 basarisizliktan sonra KENDINI KAPATIR: yoksa geri donus hedefinde de
 # basarisiz olur ve sistem saglikli bir acilisa hic ulasamaz.
 set -uo pipefail
+# greenboot kontrolleri noclobber ACIK bir ortamda kosuyor: `>` var olan
+# dosyayi REDDEDIYOR. Ilk denemede sayac bu yuzden 1'de kaldi ve
+# kendini kapatma korumasi hic devreye girmedi. Acikca kapatiyoruz.
+set +o noclobber
 C=/var/lib/mfaos-rollback-test.count
 n="$(cat "${C}" 2>/dev/null || echo 0)"
 if [[ "${n}" -ge 3 ]]; then
