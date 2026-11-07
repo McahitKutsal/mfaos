@@ -360,6 +360,18 @@ eslesmek zorunda. `verify.sh`'in kimlik kontrolleri bu yuzden harf
 duyarsiz (`grep -qi`) — bir sonraki yeniden adlandirmada sessizce
 bozulmasinlar.
 
+**`verify.sh` konteyner icinden `/etc/hostname`'i GOREMEZ.** podman
+`/etc/hostname`, `/etc/hosts` ve `/etc/resolv.conf`'u kendi
+urettikleriyle bind-mount ederek eziyor; konteyner icinden okunan
+deger konteyner kimligi oluyor. Ilk denemede kontrol
+`OK hostname: 9df541b629d4` diye **gecti** — imajda `fedora` yazsa da
+aynen gecerdi, yani yanlis gecis. Yanlis bir OK, hic kontrol olmamasindan
+kotudur: kontrol var saniyorsun. Bu yuzden hostname dogrulamasi
+`50-branding.sh` icinde, dosyanin yazildigi yerde duruyor.
+`/etc/machine-info` ezilmiyor, `PRETTY_HOSTNAME` kontrolu bu yuzden
+`verify.sh`'te kalabildi. Yeni bir kontrol yazarken sor: bu dosyayi
+podman eziyor mu?
+
 **Ucuncu parti GitHub action'lari SHA'ya pinli olmali.** Derleme isi
 `COSIGN_PRIVATE_KEY` ve `packages: write` tasiyor. `@main` ile duran
 bir action, o branch'i kontrol eden herkese imzalama anahtarini

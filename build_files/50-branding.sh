@@ -67,6 +67,18 @@ fi
 # Bunlar VARSAYILAN, kilit degil: kullanici Ayarlar'dan degistirebilir.
 echo "${OS_NAME}" > /etc/hostname
 printf 'PRETTY_HOSTNAME="%s"\n' "${OS_PRETTY_NAME}" > /etc/machine-info
+
+# Dogrulama burada, cunku verify.sh konteyner icinde calisiyor ve
+# podman /etc/hostname'i eziyor. Yazdiktan hemen sonra okuyoruz:
+# sessizce bos kalan bir hostname dosyasi makineyi "fedora" yapar.
+[[ "$(cat /etc/hostname 2>/dev/null)" == "${OS_NAME}" ]] || {
+    echo "HATA: /etc/hostname '${OS_NAME}' olarak yazilamadi." >&2
+    exit 1
+}
+grep -q "^PRETTY_HOSTNAME=\"${OS_PRETTY_NAME}\"\$" /etc/machine-info || {
+    echo "HATA: /etc/machine-info PRETTY_HOSTNAME yazilamadi." >&2
+    exit 1
+}
 echo "Kimlik: $(grep '^PRETTY_NAME=' /usr/lib/os-release)"
 echo "Aygit adi: ${OS_PRETTY_NAME} (hostname: ${OS_NAME})"
 exit 0

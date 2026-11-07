@@ -227,11 +227,22 @@ else
     warn "PRETTY_HOSTNAME yok — Ayarlar'da aygit adi 'fedora' gorunur"
 fi
 
-HN="$(cat /etc/hostname 2>/dev/null || true)"
-case "${HN}" in
-    ""|fedora|localhost*) warn "hostname '${HN:-bos}' — Fedora varsayilani kalmis" ;;
-    *)                    ok "hostname: ${HN}" ;;
-esac
+# /etc/hostname'i buradan DOGRULAYAMIYORUZ: verify.sh podman run ile
+# calisiyor ve podman /etc/hostname'i kendi dosyasiyla bind-mount
+# ederek eziyor — okunan deger konteyner kimligi oluyor, imajdaki
+# deger degil. Yanlis bir "OK" basmak hic basmamaktan kotu, cunku
+# imajda "fedora" yazsa da gecerdi. Gercek dogrulama 50-branding.sh
+# icinde, dosyanin yazildigi yerde yapiliyor.
+if [[ -f /run/.containerenv || -n "${container:-}" ]]; then
+    printf '         hostname konteynerde dogrulanamaz (podman eziyor);\n'
+    printf '         50-branding.sh derleme aninda kontrol ediyor\n'
+else
+    HN="$(cat /etc/hostname 2>/dev/null || true)"
+    case "${HN}" in
+        ""|fedora|localhost*) warn "hostname '${HN:-bos}' — Fedora varsayilani kalmis" ;;
+        *)                    ok "hostname: ${HN}" ;;
+    esac
+fi
 
 # ID=fedora kalmali: RPM Fusion, Flatpak ve ucuncu parti scriptler bu
 # alana bakiyor. Degismisse paket yonetimi sessizce bozulur.
