@@ -184,6 +184,11 @@ Tuzaklar:
   gecerli olur; oturum kapatip acmak yetmez.
 - VM testi icin `/dev/kvm` gerekiyor ve calisiyor (ic ice
   sanallastirma acik).
+- **Varsayilan WSL distrosu Ubuntu olmayabilir.** Docker Desktop
+  kuruluysa `wsl -l -v` ciktisindaki yildiz `docker-desktop`'ta
+  olabiliyor; duz `wsl` seni BusyBox kabuguna atiyor (prompt `MSI:~#`,
+  `-ash: ssh: not found`). Her zaman `wsl -d Ubuntu`, ya da bir kez
+  `wsl --set-default Ubuntu`.
 
 Degisiklik akisi: yerelde `./test.sh all` -> gecerse `git push` ->
 CI iki asamayi daha yapiyor (ghcr'ye gonderme + imzalama).

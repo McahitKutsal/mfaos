@@ -107,11 +107,20 @@ elle yazmak zorunda kalirsin. VM icinde **bir kez**:
 sudo systemctl enable --now sshd
 ```
 
-Sonra WSL'den — port yonlendirmesi `test.sh` icinde hazir:
+Sonra host'tan baglan — port yonlendirmesi `test.sh` icinde hazir:
 
 ```bash
-ssh -p 2222 test@localhost        # parola: test
+wsl -d Ubuntu                      # DUZ `wsl` yazma, asagiya bak
+ssh -p 2222 test@localhost         # parola: test
 ```
+
+**`-d Ubuntu` sart.** Docker Desktop kuruluysa varsayilan WSL
+distrosu `docker-desktop` olabiliyor; duz `wsl` seni BusyBox kabuguna
+atar ve `-ash: ssh: not found` alirsin. Kontrol: `wsl -l -v`, yildiz
+hangisindeyse varsayilan o. Kalicisi: `wsl --set-default Ubuntu`.
+
+PowerShell'den de denenebilir (Windows'un kendi OpenSSH'i, WSL2
+localhost yonlendirmesi uzerinden): `ssh -p 2222 test@localhost`.
 
 `sshd` imajda bilerek kapali (`20-hardening.sh`). Feda edilebilir test
 VM'inde acmak sorun degil; gercek makinede acma.
@@ -221,6 +230,7 @@ derleme bunu `UYARI` olarak yazar ama durmaz.
 | `bootc: command not found` | WSL'desin, VM'de degilsin. Katman 4 komutlari VM icinde kosar: `./test.sh boot` |
 | `untracked working tree files would be overwritten` | `~/mfaos`'ta `curl` ile dosya indirmissin; orada gerek yok: `rm rollback-test.sh && git pull` |
 | `rollback-test.sh` "ostree degil" diyor | Dogru davranis — gelistirme makinesinde kosuyorsun, VM'de kos |
+| `-ash: ssh: not found`, prompt `MSI:~#` | Docker Desktop'in WSL distrosundasin, Ubuntu degil: `wsl -d Ubuntu` |
 
 ---
 

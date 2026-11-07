@@ -211,7 +211,8 @@ vm() {
     # kapali (20-hardening.sh); feda edilebilir test VM'inde acmak
     # sorun degil, gercek makinede acma.
     echo "    VM icinde bir kez: sudo systemctl enable --now sshd"
-    echo "    sonra WSL'den:     ssh -p 2222 test@localhost  (parola: test)"
+    echo "    sonra host'tan:     wsl -d Ubuntu  (duz wsl degil!)"
+    echo "                       ssh -p 2222 test@localhost  (parola: test)"
     qemu-system-x86_64 \
         -M "${machine}" -cpu host -enable-kvm \
         -m 4096 -smp 4 \
