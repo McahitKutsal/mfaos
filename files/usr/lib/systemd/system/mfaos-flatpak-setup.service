@@ -9,12 +9,23 @@
 Description=mfaos: Flatpak uzak deposunu ayarla
 After=network-online.target
 Wants=network-online.target
+# 10 dakika icinde 10 denemeye izin ver, sonra pes et.
+StartLimitIntervalSec=600
+StartLimitBurst=10
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 # --if-not-exists sayesinde her acilista zararsizca tekrar calisir.
 ExecStart=/usr/bin/flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+# network-online.target "ag yapilandirildi" demek, "internet var" demek
+# degil. Captive portal arkasinda, wifi henuz tanimsizken ya da DNS gec
+# gelirse bu komut duser — ve oneshot servis bir daha DENENMEZ. Sonuc:
+# kullanici hicbir GUI uygulamasi kuramaz ve sebebini hicbir yerde gormez.
+# Type=oneshot icin systemd'nin izin verdigi tek yeniden deneme bu.
+Restart=on-failure
+RestartSec=30s
 
 [Install]
 WantedBy=multi-user.target

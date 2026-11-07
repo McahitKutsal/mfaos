@@ -1,0 +1,21 @@
+# bootc-image-builder disk duzeni — SADECE YEREL QEMU TESTI icin.
+#
+# `./test.sh vm` bu dosyayi kullanir. Icinde sudo yetkili, parolasi
+# bilinen bir hesap var: VM'e giris yapabilmek icin gerekli.
+#
+# BU DOSYA KURULUM MEDYASI URETIMINDE KULLANILMAZ. Gercek kurulum
+# disk-config.toml ile yapilir; kullanici hesabi ilk acilista
+# gnome-initial-setup ile olusturulur.
+#
+# Ayri dosya olmasinin tek sebebi bu: bir yorum satirina guvenmek
+# yerine, test hesabinin gercek kuruluma karismasini yapisal olarak
+# imkansiz kilmak. (Bkz. DEVAM.md Adim 3 — anaconda-iso uretimi.)
+
+[[customizations.filesystem]]
+mountpoint = "/"
+minsize = "30 GiB"
+
+[[customizations.user]]
+name = "test"
+password = "test"
+groups = ["wheel"]

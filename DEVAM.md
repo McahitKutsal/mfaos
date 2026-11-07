@@ -17,26 +17,48 @@ Son guncelleme: 7 Kasim 2026
 |---|---|
 | 0 — gelistirme ortami (WSL2 + podman) | Tamam |
 | 1 — imaj derlemesi | Tamam |
-| 2 — icerik dogrulama (`verify.sh`, 40 kontrol) | Tamam |
+| 2 — icerik dogrulama (`verify.sh`) | Tamam |
 | 3 — QEMU'da boot | Tamam |
-| CI: derle -> ghcr'ye gonder -> cosign imzala -> dogrula | Tamam, yesil |
+| CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Dogrulama adimi yeni, CI'da denenmedi |
 
 Imaj GNOME masaustu olarak aciliyor, kendini `mfaOS 0.1` diye
 tanitiyor, Turkce arayuz ve Turkce Q klavye ile geliyor, Fedora
-logolari (143 gorsel) kendi armamizla degismis durumda. Giris
-ekraninda yatay logo, geri kalan her yerde kare arma.
+logolari kendi armamizla degismis durumda. Giris ekraninda yatay logo,
+geri kalan her yerde kare arma.
+
+fedora-logos'un 143 PNG/SVG'sinden 81'i degisiyor, 62'si kasitli olarak
+korunuyor — plymouth animasyonu, anaconda arka planlari ve kurulum
+slayt cizimleri logo degil (bak: 4. bolumdeki tuzaklar). Sayilar
+Fedora 44'teki `fedora-logos-42.0.1-3` icin; paket surumu degisirse
+`verify.sh` "sadece N logo degismis" diye uyarir.
 
 ### HENUZ TEST EDILMEMIS — en onemli eksik
 
 **Katman 4: guncelleme ve geri alma.** Mimarinin butun vaadi bu ve bir
-kez bile denenmedi. Yani su an "dogru tasarlanmis" bir sistem var, ama
-"robust" oldugunun kaniti yok.
+kez bile denenmedi. Otomatik geri donus artik *kurulu* (greenboot,
+`build_files/25-rollback.sh`) — ama kurulu olmasi calistigi anlamina
+gelmiyor. Su an "dogru tasarlanmis" bir sistem var, "robust"
+oldugunun kaniti yok.
 
 **Katman 5: gercek donanim.** Hicbir fiziksel makineye kurulmadi.
 
 **Imza zincirinin makine tarafi.** CI imzaliyor, ama hicbir makine
 henuz bir imzayi dogrulamadi. `policy.json`'un gercekten ise yarayip
 yaramadigini bilmiyoruz.
+
+**Bu oturumda eklenenlerin hicbiri derlenmedi.** greenboot adimi,
+`verify.sh`'in yeni kontrolleri, CI'in dogrulama adimi, lint isi ve
+yeniden yazilan `60-logos.sh` yerelde bir kez bile calismadi. Sirada
+ilk is: `./test.sh all`. Kirilabilecek yerler:
+
+- `greenboot` paket adi Fedora 44 deposunda bulunmayabilir; o zaman
+  `25-rollback.sh` kasitli olarak patlar.
+- Lint isi mevcut scriptlerde birikmis shellcheck uyarilarini bulabilir.
+  Imaji etkilemez, sadece CI'i kirmizi yapar.
+- `60-logos.sh` artik PNG basligini `od` ile kendisi okuyor; python3
+  bagimliligi kalkti. Filtre ve geometri mantigi gercek fedora-logos
+  dosya listesine karsi yerelde test edildi (81 degisti / 62 korundu),
+  ama imajin icinde bir kez bile kosmadi.
 
 ---
 
@@ -81,11 +103,31 @@ sudo systemctl reboot
 ```
 
 **Asil test bundan sonrasi:** bilerek bozuk bir imaj yayinla (ornegin
-`20-hardening.sh`'e `exit 1` koyma degil — derleme gecmeli ama sistem
-acilmamali; mesela gecersiz bir cekirdek argumani) ve otomatik geri
-donusun devreye girdigini gor. O mekanizma calismiyorsa "robust"
-iddiasi bos.
+**Asil test bundan sonrasi.** Otomatik geri donus artik kurulu
+(`greenboot` — bkz. `build_files/25-rollback.sh`) ama bir kez bile
+calistigi gorulmedi. Sirayla:
 
+```bash
+# a. Zincir ayakta mi?
+systemctl is-enabled greenboot-healthcheck.service \
+                     greenboot-set-rollback-trigger.service
+journalctl -u greenboot-healthcheck.service -b
+
+# b. Saglikli acilistan sonra sayac temizlenmis mi?
+sudo grub2-editenv - list | grep boot_   # boot_success=1, boot_counter YOK
+
+# c. Simdi bilerek bozuk bir imaj yayinla.
+#    Derleme GECMELI ama sistem acilmamali — `exit 1` koymak ise
+#    yaramaz, derlemeyi kirar. Dogru kirma yollari: gecersiz bir
+#    cekirdek argumani, ya da gdm'i acilmaz hale getirmek.
+#    Guncelle, reboot et, izle: makine 3 denemeden sonra 0.1'e donmeli.
+```
+
+Burada iki ayri sey test ediliyor, ikisini karistirmamak lazim:
+`bootc rollback` **elle** geri donus (yukaridaki 3. adim), greenboot
+ise **otomatik** geri donus. Ilki calisiyor diye ikincisi calisiyor
+sanma — ikincisi GRUB'un `boot_counter` degiskenini kalici
+yazabilmesine bagli ve bu henuz dogrulanmadi.
 ### Adim 3 — Katman 5: gercek makineye kurulum
 
 **Once cevaplanmasi gereken soru:** feda edilebilir bir test makinesi
@@ -132,6 +174,7 @@ cd ~/mfaos          # ASIL kopya burada, Windows tarafinda degil
 ./preflight.sh      # ortam kontrolu
 ./test.sh all       # derle + dogrula
 ./test.sh vm        # QEMU'da boot et
+./test.sh boot      # hepsi bir arada
 ```
 
 Tuzaklar:
@@ -210,6 +253,79 @@ sealed imaj hedefinin onunu kapatirdi.
 (`stage-only` override), kullanici bir sonraki reboot'ta geciyor.
 Masaustunde otomatik reboot kabul edilemez.
 
+**CRLF satir sonu her seyi sessizce bozar.** Proje Windows'ta, git
+`core.autocrlf=true` ile duruyor. Commit'ler LF kalir ama Windows
+calisma kopyasi CRLF olur. O kopyadan (ya da `/mnt/c` uzerinden)
+derlersen `COPY files/ /` imaja `#!/usr/bin/env bash\r` tasir:
+"bad interpreter". En kotu hali greenboot zorunlu kontrolu —
+calismayan kontrol "basarisiz" sayilir ve makine her acilista geri
+doner. `.gitattributes` artik satir sonunu depo genelinde LF'e
+sabitliyor; silme.
+
+**greenboot'un varsayilan kontrolleri masaustunu geri dondurur.**
+`greenboot-default-health-checks` BILEREK kurulmuyor. Icindeki
+`required.d/01_repository_dns_check.sh` iki sekilde yanlis karar
+veriyor: `/etc/ostree/remotes.d` yoksa dogrudan `exit 1` (bootc
+kurulumunda kaynak konteyner registry'si, ostree remote degil), ve
+depo alan adlarinin DNS cozumlemesini sart kosuyor (laptop agsiz
+acilir). Kurmak zorunda kalirsan `/etc/greenboot/greenboot.conf`
+icinde `DISABLED_HEALTHCHECKS=("01_repository_dns_check.sh")`.
+
+**`required.d`'ye kontrol eklemek kesinti uretir.** Oradaki her yanlis
+"basarisiz" calisan bir makineyi geri dondurur. `greenboot-healthcheck`
+`WantedBy=multi-user.target` — yani gdm'den ONCE calisabiliyor; bu
+yuzden masaustu kontrolu beklemeli, hemen karar vermemeli. Emin
+olmadigin her sey `wanted.d`'ye (sadece gunluge yazar).
+
+**CI artik push'tan once `verify.sh` calistiriyor.** O adimi silme ya
+da push'un arkasina alma. Dogrulanmamis bir imaj registry'ye ciktigi an
+imzalanir ve makineler onu mesru guncelleme olarak ceker — yerelde
+uygulanan disiplinin CI'da da bulunmasi gerekiyor.
+
+**fedora-logos sadece logo tasimiyor — ve filtre ALLOWLIST olmak
+zorunda.** Fedora 44'teki paket 143 PNG/SVG iceriyor ve bunlarin 62'si
+logo DEGIL: plymouth acilis animasyonu (35 kare), anaconda
+`sidebar-bg.png` / `topbar-bg.png` (12), kurulum slayt cizimleri
+(`rnotes/en/*.svg`, 5), genis acilis gorselleri, bir `-symbolic` ikon
+ve `fedora-logo-sprite.*`. `60-logos.sh` 81'ini degistirip 62'sini
+koruyor; korudugu adlari derleme ciktisina yaziyor.
+
+Filtrenin YONU onemli. "Chrome diye bildiklerim haric her seyi
+degistir" (denylist) Fedora pakete yeni bir dosya ekledigi an ACIK
+duser: bilinmeyen arayuz parcasi logoyla ezilir. "Tanidigim logo
+adlarini degistir" (allowlist) KAPALI duser: bilinmeyen bir logo
+Fedora'nin kalir — gorunur ve zararsiz. En kotu senaryo denylist'te:
+Faz 3'te LUKS parola isteminde parola kutusunun yerinde logo bulmak.
+
+**Kare armayi genis slota koymak goruntuyu bozar.** `60-logos.sh` artik
+PNG basligini kendisi okuyup en/boy oranina bakiyor; 1.5:1'den genis
+slotlara `wide-*.png` gidiyor. En gorunur ornegi `system-logo-white.png`
+ve GDM logosu. `verify.sh` giris ekrani logosunun orani kareye dustuyse
+HATA veriyor.
+
+**Koyu zemin slotlari beyaz varyant istiyor — HENUZ URETILMEDI.** Yedi
+dosya (`*whitelogo*`, `*darkbackground*`, `system-logo-white.png`,
+plymouth `watermark.png`, GDM logosu) siyah/koyu zemine ciziliyor.
+Oraya lacivert-mercan armayi koyunca logo GORUNMEZ olabilir — ve bu,
+ekrana bakmadan anlasilmayan tek hata sinifi. Mekanizma hazir,
+kaynaklar depoda; eksik olan sadece uretim adimi:
+
+```bash
+WHITE=logo/simge/simge-beyaz-1024.png \
+  ./add-logo.sh logo.png logo/kilit/yatay-kilit-mercan-2048.png
+```
+
+Uretmezsen derleme `UYARI: 7 koyu zemin slotuna renkli arma kondu`
+yaziyor, `verify.sh` de ayni seyi uyari olarak tekrarliyor. Yatay beyaz
+kaynak yok; o yuzden genis koyu slotlar renkli yatayi aliyor (kare
+beyaza DUSMUYOR — genis slota kare koymak daha kotu).
+
+**Ucuncu parti GitHub action'lari SHA'ya pinli olmali.** Derleme isi
+`COSIGN_PRIVATE_KEY` ve `packages: write` tasiyor. `@main` ile duran
+bir action, o branch'i kontrol eden herkese imzalama anahtarini
+okuma imkani verir — zincirin en zayif halkasi imzalama adimi degil,
+ayni iste calisan ucuncu parti kod.
+
 ---
 
 ## 5. Bakim — projeyi bitiren sey bu
@@ -238,22 +354,27 @@ makul.
 ## 6. Proje yapisi
 
 ```
-Containerfile              imaj tanimi, build arg'lari (OS_VERSION, NVIDIA_ENABLED)
-build_files/build.sh       adimlari sirayla calistirir
-build_files/10-packages.sh paket katmanlama
+Containerfile               imaj tanimi, build arg'lari (OS_VERSION, NVIDIA_ENABLED)
+build_files/build.sh        adimlari sirayla calistirir
+build_files/10-packages.sh  paket katmanlama
 build_files/20-hardening.sh SELinux, servisler, guvenlik duvari
-build_files/30-desktop.sh  flatpak + guncelleme timer'i
-build_files/40-nvidia.sh   NVIDIA (su an CI'da kapali)
-build_files/50-branding.sh os-release / sistem kimligi
-build_files/60-logos.sh    fedora-logos degisimi + GDM logosu
-build_files/70-locale.sh   Turkce dil ve klavye
-files/                     imajin kok dizinine oldugu gibi kopyalanir
-logo/                      logo kaynaklari (imaja girmez)
-add-logo.sh                logo boyutlarini uretir: ./add-logo.sh <kare> [yatay]
-preflight.sh               gelistirme ortami kontrolu
-test.sh                    build | verify | shell | vm | all
-verify.sh                  imaj icinde calisir, 40 kontrol
-disk-config.toml           bootc-image-builder disk duzeni
+build_files/25-rollback.sh  greenboot — basarisiz boot sonrasi geri donus
+build_files/30-desktop.sh   flatpak + guncelleme timer'i
+build_files/40-nvidia.sh    NVIDIA (su an CI'da kapali)
+build_files/50-branding.sh  os-release / sistem kimligi
+build_files/60-logos.sh     fedora-logos logolari (allowlist) + GDM logosu
+build_files/70-locale.sh    Turkce dil ve klavye
+files/                      imajin kok dizinine oldugu gibi kopyalanir
+files/usr/lib/greenboot/    saglik kontrolleri (required.d = geri donus tetikler)
+logo/                       logo kaynaklari (imaja girmez)
+add-logo.sh                 logo boyutlarini uretir (WHITE= ile beyaz varyant)
+preflight.sh                gelistirme ortami kontrolu
+test.sh                     build | verify | shell | vm | boot | all
+verify.sh                   imaj icinde calisir; kontrol sayisini kendi yazar
+disk-config.toml            gercek kurulum disk duzeni (kullanici tanimi YOK)
+disk-config.test.toml       QEMU testi — sudo yetkili test/test hesabi burada
+KOMUTLAR.md                 komut basvuru kagidi (derle + QEMU)
+.gitattributes              satir sonlarini LF'e sabitler (Windows tuzagi)
 ```
 
 Yeni bir derleme adimi eklerken: `build_files/` icine `NN-ad.sh`

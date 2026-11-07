@@ -25,7 +25,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     strategy:
       # Bir varyant patlarsa digeri yine de yayinlansin.
@@ -68,7 +67,12 @@ jobs:
       # cekiyor (kernel-devel, gcc, rpm-build) — temel varyanttan ~2GB fazla.
       # Runner'daki varsayilan ~14GB yetmiyor.
       - name: Disk alani ac
-        uses: jlumbroso/free-disk-space@main
+        # Hareketli bir branch yerine surume pinli. Bu action,
+        # COSIGN_PRIVATE_KEY ve packages:write tasiyan isin icinde
+        # calisiyor; @main olsaydi o branch'i kontrol eden herkes
+        # imzalama anahtarini okuyabilirdi. Zincirin en zayif halkasi
+        # imzalama adimi degil, ayni iste calisan ucuncu parti kod.
+        uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
         with:
           preinstalled-runtimes: true
           docker-images: true
@@ -102,6 +106,20 @@ jobs:
             --build-arg=NVIDIA_ENABLED=${{ matrix.nvidia }}
             --build-arg=OS_NAME=${{ matrix.image }}
             --build-arg=IMAGE_REF=${{ env.IMAGE_REGISTRY }}/${{ matrix.image }}
+
+      # Projenin merkezi disiplini: derlemenin basarili bitmesi, istedigin
+      # seyin imaja girdigi anlamina gelmiyor — scriptlerdeki `|| true`'lar
+      # hatalari yutar. Bu adim PUSH'TAN ONCE olmak zorunda: dogrulanmamis
+      # imaj registry'ye hic cikmasin. Ciktigi an imzalanir ve makineler
+      # onu mesru bir guncelleme olarak ceker.
+      - name: Imaj icerigini dogrula
+        env:
+          IMAGE_NAME: ${{ matrix.image }}
+        run: |
+          podman run --rm \
+            -v "${PWD}/verify.sh:/verify.sh:ro" \
+            --entrypoint /bin/bash \
+            "${IMAGE_NAME}:${FEDORA_VERSION}" /verify.sh
 
       # PR'larda derlemeyi dogrula ama yayinlama.
       - name: Registry'ye gonder
@@ -151,3 +169,26 @@ jobs:
         run: |
           cosign verify --key cosign.pub \
             "${IMAGE_REGISTRY}/${{ matrix.image }}@${DIGEST}"
+
+  # Derlemenin tamamini shell scriptler tasiyor. Derlemeden ayri bir is
+  # olarak duruyor: lint kirmizi olsa bile saglam bir imajin yayinlanmasini
+  # engellemesin, ama fark edilmeden de kalmasin.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Sozdizimi kontrolu. CRLF satir sonu ile bozulmus bir scripti de
+      # burada yakalar — .gitattributes'in unuttugu bir dosya olursa.
+      - name: Sozdizimi
+        run: |
+          for f in ./*.sh build_files/*.sh files/usr/lib/greenboot/check/*/*.sh; do
+            bash -n "$f" || exit 1
+          done
+
+      # SC2154: os-release `source` edildikten sonra gelen degiskenler
+      # (ID, PRETTY_NAME) shellcheck tarafindan gorulemez.
+      - name: shellcheck
+        run: |
+          shellcheck --severity=warning --exclude=SC2154 \
+            ./*.sh build_files/*.sh files/usr/lib/greenboot/check/*/*.sh

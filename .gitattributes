@@ -1,0 +1,16 @@
+# Bu depodaki her sey Linux'ta calisiyor ve gelistirme Windows'tan
+# yapiliyor. CRLF satir sonlari sessiz ve pahali bir sekilde bozuyor:
+#
+#   - shell scriptleri:   "#!/usr/bin/env bash\r" -> bad interpreter
+#   - systemd unit'leri:  yoksayilan ya da bozuk direktifler
+#   - kargs.d/*.toml:     bootc'nin TOML ayristirmasi duser
+#
+# En kotu hali greenboot zorunlu kontrolu: calismayan bir kontrol
+# "basarisiz" sayilir ve makine her acilista geri doner.
+#
+# Bu yuzden satir sonunu depo genelinde LF'e sabitliyoruz — isletim
+# sistemi ya da kullanicinin core.autocrlf ayari ne olursa olsun.
+* text=auto eol=lf
+
+# Gorseller donusturulmesin.
+*.png -text

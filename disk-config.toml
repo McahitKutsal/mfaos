@@ -1,4 +1,4 @@
-# bootc-image-builder disk duzeni.
+# bootc-image-builder disk duzeni — GERCEK kurulum icin.
 #
 # NOT: /var'i ayri bolum olarak tanimlayamazsin. bootc/ostree'de /var
 # kok dosya sisteminin parcasi ve ostree tarafindan yonetiliyor.
@@ -6,14 +6,11 @@
 #
 # Sifreli ayri bir /var istiyorsan bu, gercek makineye kurulum sirasinda
 # LUKS ile yapilir — imaj uretiminde degil. Faz 3.
+#
+# Bu dosyada BILEREK kullanici tanimi yok. QEMU testi icin gereken
+# test hesabi disk-config.test.toml icinde; ikisini ayri tutmanin sebebi
+# o hesabin kazara gercek kurulum medyasina girmesini imkansiz kilmak.
 
 [[customizations.filesystem]]
 mountpoint = "/"
 minsize = "30 GiB"
-
-# Test kullanicisi — SADECE QEMU testi icin.
-# Gercek kurulumda bu blogu SIL.
-[[customizations.user]]
-name = "test"
-password = "test"
-groups = ["wheel"]

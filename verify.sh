@@ -12,8 +12,9 @@
 
 FAIL=0
 WARN=0
+PASS=0
 
-ok()   { printf '  \033[32m  OK  \033[0m %s\n' "$1"; }
+ok()   { printf '  \033[32m  OK  \033[0m %s\n' "$1"; PASS=$((PASS+1)); }
 bad()  { printf '  \033[31m HATA \033[0m %s\n' "$1"; FAIL=$((FAIL+1)); }
 warn() { printf '  \033[33mUYARI \033[0m %s\n' "$1"; WARN=$((WARN+1)); }
 head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -62,6 +63,18 @@ else
     ok "sshd etkin degil"
 fi
 
+# 20-hardening.sh'teki `|| true`'larin arkasi. Ucu de sessizce
+# dusebilir ve imaj yine "basarili" derlenir.
+if grep -q '^DefaultZone=block' /etc/firewalld/firewalld.conf 2>/dev/null; then
+    ok "guvenlik duvari varsayilan bolgesi: block"
+else
+    bad "guvenlik duvari varsayilan bolgesi ayarlanmamis"
+fi
+
+# Denetim gunlugu: olay sonrasi incelemede tek gercek kaynak.
+unit_enabled 'auditd.service'      "denetim gunlugu (auditd) etkin"
+unit_enabled 'fwupd-refresh.timer' "firmware guncelleme timer'i etkin"
+
 # ---------------------------------------------------------------
 head_ "2. Imza zinciri"
 # ---------------------------------------------------------------
@@ -82,7 +95,7 @@ else
 fi
 
 # ---------------------------------------------------------------
-head_ "3. Guncelleme mekanizmasi"
+head_ "3. Guncelleme ve geri donus"
 # ---------------------------------------------------------------
 unit_enabled 'bootc-fetch-apply-updates.timer' "guncelleme timer'i etkin"
 have_file /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d/10-mfaos-stage-only.conf \
@@ -97,15 +110,66 @@ else
     bad "bootc ikilisi YOK — makine kendini guncelleyemez"
 fi
 
-# ---------------------------------------------------------------
-head_ "4. bootc gereksinimleri"
-# ---------------------------------------------------------------
-VAR_FILES="$(find /var -mindepth 1 \( -type f -o -type l \) 2>/dev/null | wc -l)"
-if [[ "${VAR_FILES}" -eq 0 ]]; then
-    ok "/var temiz (bos dizinler normal)"
+# Otomatik geri donus bootc'den degil greenboot'tan geliyor. Bu
+# kontrollerden biri duserse "bozuk guncelleme kendini geri alir"
+# iddiasi gecersiz — ve bunu ancak gercekten bozuk bir guncellemede,
+# en kotu anda ogrenirsin.
+unit_enabled 'greenboot-healthcheck.service' "greenboot saglik kontrolu etkin"
+unit_enabled 'greenboot-set-rollback-trigger.service' \
+    "greenboot geri donus tetikleyicisi etkin (boot_counter'i kuran parca)"
+
+# Calistirma biti olmayan bir kontrol "basarisiz" sayilir ve makine
+# her acilista geri doner. CRLF satir sonu da ayni sonucu verir.
+for chk in /usr/lib/greenboot/check/required.d/50-mfaos-desktop.sh \
+           /usr/lib/greenboot/check/wanted.d/50-mfaos-integrity.sh; do
+    if [[ -x "${chk}" ]]; then
+        ok "saglik kontrolu calistirilabilir: ${chk##*/}"
+    else
+        bad "saglik kontrolu calistirilamaz: ${chk}"
+    fi
+done
+
+# Bu paket kurulursa required.d/01_repository_dns_check.sh devreye girer
+# ve agsiz acilan laptop'i geri dondurur. Bilerek kurmuyoruz.
+if rpm -q greenboot-default-health-checks >/dev/null 2>&1; then
+    warn "greenboot-default-health-checks kurulu — agsiz acilista geri donus tetikler"
 else
-    warn "/var icinde ${VAR_FILES} duz dosya var — kurulumda kaybolur:"
-    find /var -mindepth 1 \( -type f -o -type l \) 2>/dev/null | head -10 | sed 's/^/           /'
+    ok "greenboot varsayilan kontrolleri kurulu degil (bilincli)"
+fi
+
+# ---------------------------------------------------------------
+head_ "4. Paketler"
+# ---------------------------------------------------------------
+# Bir paket adi degisir ya da depodan duserse, kurulum adimlarindaki
+# `|| true` sayesinde derleme devam eder. Vaat ettigimiz akislarin
+# dayandigi paketleri tek tek soruyoruz.
+for pkg in flatpak distrobox greenboot audit cryptsetup tpm2-tools \
+           sbsigntools fwupd glibc-langpack-tr; do
+    if rpm -q "${pkg}" >/dev/null 2>&1; then
+        ok "${pkg}"
+    else
+        bad "${pkg} kurulu degil"
+    fi
+done
+
+# ---------------------------------------------------------------
+head_ "5. bootc gereksinimleri"
+# ---------------------------------------------------------------
+# /var'da pakete ait girdiler normaldir: /var/lib/rpm, /var/run ve
+# /var/mail taban imajin tasarimi geregi sembolik bag. Sorun olan,
+# BIZIM ardimizda biraktigimiz dosyalar — onlar kurulumda sessizce
+# kaybolur. Sabit bir dislama listesi yerine sahibini soruyoruz.
+VAR_STRAY=()
+while IFS= read -r p; do
+    rpm -qf "${p}" >/dev/null 2>&1 && continue
+    VAR_STRAY+=("${p}")
+done < <(find /var -mindepth 1 \( -type f -o -type l \) 2>/dev/null)
+
+if [[ ${#VAR_STRAY[@]} -eq 0 ]]; then
+    ok "/var temiz (pakete ait girdiler ve bos dizinler normal)"
+else
+    warn "/var icinde pakete ait olmayan ${#VAR_STRAY[@]} girdi var — kurulumda kaybolur:"
+    printf '           %s\n' "${VAR_STRAY[@]:0:10}"
 fi
 
 # --- Dil ve klavye ---
@@ -131,6 +195,18 @@ if grep -q 'XkbLayout.*"tr' /etc/X11/xorg.conf.d/00-keyboard.conf 2>/dev/null; t
     ok "oturum klavyesi Turkce Q"
 else
     warn "oturum klavyesi ayarlanmamis"
+fi
+
+# dconf anahtar dosyasi yazmak yetmiyor: `dconf update` derlenmis ikili
+# db'yi uretmezse ayar kullaniciya HIC ulasmaz. O komut iki scriptte de
+# `|| true` ile cagriliyor — yani tam sessizce dusebilecegi yer burasi.
+have_file /etc/dconf/db/local "dconf local db derlenmis (klavye duzeni)"
+have_file /etc/dconf/db/gdm   "dconf gdm db derlenmis (giris ekrani logosu)"
+
+if grep -q '^system-db:local$' /etc/dconf/profile/user 2>/dev/null; then
+    ok "dconf profilinde system-db:local var"
+else
+    bad "dconf profili eksik — local.d ayarlari kullaniciya ulasmaz"
 fi
 
 # --- Kimlik ---
@@ -161,9 +237,97 @@ else
     bad "cekirdek modul dizini bulunamadi"
 fi
 
+
+# ---------------------------------------------------------------
+head_ "6. Logo katmani"
+# ---------------------------------------------------------------
+# 60-logos.sh iki yonde de yanlis gidebilir ve ikisi de ancak ekrana
+# bakilinca anlasilir — tam o yuzden burada olculuyor:
+#   logo degismemis -> imaj Fedora markasiyla yayinlanir
+#   arayuz degismis -> acilis animasyonu / LUKS parola kutusu bozulur
+have_file /usr/share/mfaos-logo/512.png "logo kaynaklari imajda"
+
+if [[ -f /usr/share/mfaos-logo/white-512.png ]]; then
+    ok "koyu zemin (beyaz) varyanti var"
+else
+    warn "beyaz varyant yok — GDM/plymouth koyu zemininde arma gorunmeyebilir"
+fi
+
+# PNG basligini dogrudan okuyoruz: IHDR'de 16. bayttan itibaren
+# 4 bayt genislik + 4 bayt yukseklik.
+png_ratio() {
+    local sig out w h
+    local -a b=()
+    sig="$(od -An -tx1 -N8 -- "$1" 2>/dev/null | tr -d ' \n')" || sig=""
+    [[ "${sig}" == "89504e470d0a1a0a" ]] || { echo 0; return 0; }
+    out="$(od -An -tu1 -j16 -N8 -- "$1" 2>/dev/null)" || out=""
+    read -r -a b <<<"${out}" || true
+    (( ${#b[@]} == 8 )) || { echo 0; return 0; }
+    w=$(( (b[0]<<24)|(b[1]<<16)|(b[2]<<8)|b[3] ))
+    h=$(( (b[4]<<24)|(b[5]<<16)|(b[6]<<8)|b[7] ))
+    (( h > 0 )) || { echo 0; return 0; }
+    echo $(( w * 100 / h ))
+}
+
+if rpm -q fedora-logos >/dev/null 2>&1; then
+    # Allowlist'i burada TEKRARLAMIYORUZ: iki kopya zamanla birbirinden
+    # ayrilir. Onun yerine degismezleri olcuyoruz — logo degisti mi,
+    # arayuz korundu mu. Karsilastirma dosya ozetiyle.
+    OURS=" $(sha256sum /usr/share/mfaos-logo/* 2>/dev/null \
+             | awk '{print $1}' | sort -u | tr '\n' ' ')"
+    is_ours() {
+        local h
+        h="$(sha256sum "$1" 2>/dev/null | awk '{print $1}')"
+        [[ -n "${h}" && "${OURS}" == *" ${h} "* ]]
+    }
+
+    LOGO_N=0
+    while IFS= read -r f; do
+        [[ -f "${f}" ]] || continue
+        if is_ours "${f}"; then LOGO_N=$((LOGO_N+1)); fi
+    done < <(rpm -ql fedora-logos 2>/dev/null)
+
+    if (( LOGO_N == 0 )); then
+        bad "fedora-logos'ta hicbir dosya degismemis — imaj Fedora markali"
+    elif (( LOGO_N < 60 )); then
+        warn "sadece ${LOGO_N} logo degismis (Fedora 44'te 81 bekleniyor)"
+    else
+        ok "${LOGO_N} logo kendi armamizla degismis"
+    fi
+
+    # Arayuz parcalari KORUNMUS olmali. Logoyla ezilirlerse acilis
+    # ekrani bozulur; Faz 3'te parola kutusunun yerinde logo bulursun.
+    CHROME_HIT=()
+    for c in /usr/share/plymouth/themes/charge/progress-00.png \
+             /usr/share/plymouth/themes/charge/throbber-00.png \
+             /usr/share/anaconda/pixmaps/sidebar-bg.png \
+             /usr/share/anaconda/pixmaps/topbar-bg.png \
+             /usr/share/pixmaps/fedora-logo-sprite.png; do
+        [[ -f "${c}" ]] || continue
+        if is_ours "${c}"; then CHROME_HIT+=("${c##*/}"); fi
+    done
+    if (( ${#CHROME_HIT[@]} > 0 )); then
+        bad "arayuz parcalari logoyla ezilmis: ${CHROME_HIT[*]}"
+    else
+        ok "acilis animasyonu ve arka planlar korunmus"
+    fi
+fi
+
+# Genis slota kare arma konmus mu? En gorunur ornegi giris ekrani:
+# GDM logoyu genis bir seride cizer, kare amblem orada ezilir.
+GDM_PNG="/usr/share/pixmaps/fedora-gdm-logo.png"
+if [[ -f "${GDM_PNG}" ]]; then
+    GDM_R="$(png_ratio "${GDM_PNG}")"
+    if (( GDM_R >= 150 )); then
+        ok "giris ekrani logosu yatay (en/boy ${GDM_R}%)"
+    else
+        bad "giris ekrani logosu kare (en/boy ${GDM_R}%) — GDM onu ezer"
+    fi
+fi
+
 # ---------------------------------------------------------------
 if [[ "${NVIDIA_ENABLED:-0}" == "1" ]]; then
-head_ "5. NVIDIA"
+head_ "7. NVIDIA"
 # ---------------------------------------------------------------
     have_file /usr/lib/bootc/kargs.d/20-nvidia.toml "nvidia cekirdek argumanlari"
 
@@ -188,7 +352,10 @@ head_ "5. NVIDIA"
 fi
 
 # ---------------------------------------------------------------
-printf '\n\033[1mSonuc:\033[0m %d hata, %d uyari\n' "${FAIL}" "${WARN}"
+# Kontrol sayisini betik kendisi bildiriyor: dokumandaki sabit bir sayi
+# bayatlar, ciktidaki sayi bayatlamaz.
+printf '\n\033[1mSonuc:\033[0m %d kontrol — %d gecti, %d hata, %d uyari\n' \
+    "$((PASS+FAIL+WARN))" "${PASS}" "${FAIL}" "${WARN}"
 if [[ "${FAIL}" -gt 0 ]]; then
     printf '\033[31mImaj kullanilabilir durumda degil.\033[0m\n'
     exit 1

@@ -6,9 +6,14 @@
 #   ./test.sh shell    -> imaja konteyner olarak gir
 #   ./test.sh vm       -> qcow2 uret ve QEMU'da gercekten boot et
 #   ./test.sh all      -> build + verify
+#   ./test.sh boot     -> build + verify + vm (bastan sona tek komut)
 #
-# NVIDIA varyanti icin basina VARIANT=nvidia koy:
-#   VARIANT=nvidia ./test.sh all
+# Ortam degiskenleri:
+#   VARIANT=nvidia    NVIDIA varyantini derle
+#   SECURE_BOOT=1     VM'i Secure Boot acik firmware ile baslat (Faz 3)
+#   DISK_CONFIG=...   baska bir bootc-image-builder yapilandirmasi
+#                     (varsayilan: disk-config.test.toml — test hesapli)
+#   REBUILD_DISK=1    qcow2'yi onbellekten degil yeniden uret
 set -euo pipefail
 
 VARIANT="${VARIANT:-base}"
@@ -24,6 +29,18 @@ FEDORA_VERSION="${FEDORA_VERSION:-44}"
 TAG="localhost/${IMAGE_NAME}:${FEDORA_VERSION}"
 OUT_DIR="$(pwd)/output"
 
+# CI bu degeri build-arg olarak geciyor; yerelde de gecmezsek nvidia
+# varyantinin imaji icinde MFAOS_IMAGE_REF yanlis depoyu gosterir.
+IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/mcahitkutsal}"
+
+# VM testi, sudo yetkili `test` hesabini iceren AYRI yapilandirmayi
+# kullanir. disk-config.toml (gercek kurulum) o hesabi icermiyor.
+DISK_CONFIG="${DISK_CONFIG:-disk-config.test.toml}"
+
+# SECURE_BOOT=1 ./test.sh vm  -> Secure Boot acik firmware ile baslat.
+# Faz 3 (MOK, sbctl, module.sig_enforce) ancak boyle test edilebilir.
+SECURE_BOOT="${SECURE_BOOT:-0}"
+
 # ---------------------------------------------------------------
 build() {
     echo "==> ${TAG} derleniyor (NVIDIA=${NVIDIA_ENABLED})"
@@ -31,6 +48,7 @@ build() {
         --build-arg="FEDORA_VERSION=${FEDORA_VERSION}" \
         --build-arg="NVIDIA_ENABLED=${NVIDIA_ENABLED}" \
         --build-arg="OS_NAME=${IMAGE_NAME}" \
+        --build-arg="IMAGE_REF=${IMAGE_REGISTRY}/${IMAGE_NAME}" \
         -t "${TAG}" \
         -f Containerfile \
         .
@@ -53,23 +71,47 @@ shell() {
 
 # ---------------------------------------------------------------
 # UEFI firmware'i dagitima gore farkli yerde duruyor.
+#
+# SECURE_BOOT=1 ise imzali firmware varyantini ariyoruz. Faz 3'un
+# tamami — MOK ile nvidia modulu imzalama, sbctl, module.sig_enforce —
+# ancak Secure Boot acik bir makinede dogrulanabilir.
 find_ovmf() {
     local code vars
-    for code in \
-        /usr/share/edk2/ovmf/OVMF_CODE.fd \
-        /usr/share/OVMF/OVMF_CODE_4M.fd \
-        /usr/share/OVMF/OVMF_CODE.fd \
-        /usr/share/edk2/x64/OVMF_CODE.4m.fd \
-        /usr/share/edk2-ovmf/x64/OVMF_CODE.fd \
-        /usr/share/qemu/ovmf-x86_64-code.bin
-    do
-        [[ -f "${code}" ]] || continue
-        for vars in \
-            "${code/CODE/VARS}" \
-            "${code/code/vars}" \
-            /usr/share/edk2/ovmf/OVMF_VARS.fd \
+    local -a codes vars_extra
+    if [[ "${SECURE_BOOT}" == "1" ]]; then
+        codes=(
+            /usr/share/edk2/ovmf/OVMF_CODE.secboot.fd
+            /usr/share/OVMF/OVMF_CODE_4M.secboot.fd
+            /usr/share/OVMF/OVMF_CODE.secboot.fd
+            /usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd
+            /usr/share/edk2-ovmf/x64/OVMF_CODE.secboot.fd
+        )
+        # Anahtarlari kayitli NVRAM sablonu. Bos bir VARS ile firmware
+        # setup moduna duser ve Secure Boot kapali gibi davranir.
+        vars_extra=(
+            /usr/share/edk2/ovmf/OVMF_VARS.secboot.fd
+            /usr/share/OVMF/OVMF_VARS_4M.ms.fd
+            /usr/share/OVMF/OVMF_VARS.ms.fd
+            /usr/share/edk2/x64/OVMF_VARS.4m.fd
+        )
+    else
+        codes=(
+            /usr/share/edk2/ovmf/OVMF_CODE.fd
+            /usr/share/OVMF/OVMF_CODE_4M.fd
+            /usr/share/OVMF/OVMF_CODE.fd
+            /usr/share/edk2/x64/OVMF_CODE.4m.fd
+            /usr/share/edk2-ovmf/x64/OVMF_CODE.fd
+            /usr/share/qemu/ovmf-x86_64-code.bin
+        )
+        vars_extra=(
+            /usr/share/edk2/ovmf/OVMF_VARS.fd
             /usr/share/OVMF/OVMF_VARS_4M.fd
-        do
+        )
+    fi
+
+    for code in "${codes[@]}"; do
+        [[ -f "${code}" ]] || continue
+        for vars in "${code/CODE/VARS}" "${code/code/vars}" "${vars_extra[@]}"; do
             if [[ -f "${vars}" ]]; then
                 echo "${code}:${vars}"
                 return 0
@@ -124,7 +166,7 @@ vm() {
             --security-opt label=type:unconfined_t \
             -v "${OUT_DIR}":/output \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
-            -v "$(pwd)/disk-config.toml":/config.toml:ro \
+            -v "$(pwd)/${DISK_CONFIG}":/config.toml:ro \
             quay.io/centos-bootc/bootc-image-builder:latest \
             --type qcow2 --config /config.toml \
             "${TAG}"
@@ -134,13 +176,33 @@ vm() {
     fi
     # NVRAM yazilabilir olmali: bootloader acilis kaydini oraya yazar.
     # Salt okunur birakirsan yeniden baslatma davranisini test edemezsin.
+    #
+    # Dosya adi moda gore ayri: Secure Boot'lu ve Secure Boot'suz NVRAM
+    # birbirinin yerine kullanilamaz. Ayni dosyayi paylasirlarsa mod
+    # degistirdiginde firmware hic acilmaz.
     local nvram="${OUT_DIR}/OVMF_VARS.local.fd"
+    [[ "${SECURE_BOOT}" == "1" ]] && nvram="${OUT_DIR}/OVMF_VARS.secboot.local.fd"
     [[ -f "${nvram}" ]] || cp "${ovmf_vars}" "${nvram}"
+
+    # Secure Boot, SMM ve "secure" pflash olmadan UYGULANMAZ. Bu iki
+    # ayar yoksa imzali firmware acilir ama imza kontrolu yapmaz — yani
+    # testin gecmesi hicbir sey kanitlamaz, en kotu test turu.
+    local machine="q35"
+    local -a sb_args=()
+    if [[ "${SECURE_BOOT}" == "1" ]]; then
+        machine="q35,smm=on"
+        sb_args=(
+            -global driver=cfi.pflash01,property=secure,value=on
+            -global ICH9-LPC.disable_s3=1
+        )
+        echo "==> Secure Boot ACIK (${ovmf_code##*/})"
+    fi
 
     echo "==> Baslatiliyor: ${qcow}"
     qemu-system-x86_64 \
-        -M q35 -cpu host -enable-kvm \
+        -M "${machine}" -cpu host -enable-kvm \
         -m 4096 -smp 4 \
+        "${sb_args[@]}" \
         -drive if=pflash,format=raw,readonly=on,file="${ovmf_code}" \
         -drive if=pflash,format=raw,file="${nvram}" \
         -drive file="${qcow}",if=virtio,format=qcow2 \
@@ -154,5 +216,6 @@ case "${1:-build}" in
     shell)  shell ;;
     vm)     vm ;;
     all)    build; verify ;;
-    *)      echo "Kullanim: $0 {build|verify|shell|vm|all}"; exit 1 ;;
+    boot)   build; verify; vm ;;
+    *)      echo "Kullanim: $0 {build|verify|shell|vm|boot|all}"; exit 1 ;;
 esac

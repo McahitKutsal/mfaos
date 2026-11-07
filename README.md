@@ -11,6 +11,9 @@ onu alir.
 
 ---
 
+> **Komutlar:** `KOMUTLAR.md` — derleyip QEMU'da gormek icin tek
+> satirlik basvuru kagidi.
+>
 > **Calismaya devam etmek icin:** `DEVAM.md` — nerede kaldigimiz,
 > sirada ne var, hangi tuzaklara bir daha dusmemek gerektigi.
 
@@ -58,12 +61,16 @@ sudo bootc switch ghcr.io/mcahitkutsal/mfaos-nvidia:44
   │       ▼                                                         │
   │  pasif slota yaz (stage) ── kullanici reboot edince aktif olur  │
   │       │                                                         │
-  │       ▼  boot basarisiz?                                        │
-  │  onceki deployment'a otomatik geri don                          │
+  │       ▼  boot basarisiz? (greenboot saglik kontrolu)            │
+  │  boot_counter sifira iner ── onceki deployment acilir           │
   └─────────────────────────────────────────────────────────────────┘
 ```
 
-Zincirdeki kritik halka `policy.json`. Imzasiz imaj makineye hic inmez.
+Zincirdeki kritik halka `policy.json`: mfaos depolarindan gelen imzasiz
+bir imaj makineye hic inmez. Dikkat — politikanin varsayilani
+`insecureAcceptAnything`, yani garanti "mfaos deposu dogrulanir",
+"hicbir imzasiz imaj kabul edilmez" degil. Podman ve Flatpak'in baska
+registry'lerden cekebilmesi icin bilincli bir taviz.
 
 ---
 
@@ -111,6 +118,7 @@ dikkat et: o anahtar, makinelerinin kabul edecegi her seyi uretebilir.
 ./test.sh all       # build + verify
 ./test.sh shell     # imajin icine bak
 ./test.sh vm        # QEMU'da gercekten boot et
+./test.sh boot      # build + verify + vm — bastan sona tek komut
 
 VARIANT=nvidia ./test.sh all   # NVIDIA varyanti
 ```
@@ -168,6 +176,53 @@ Bu yuzden `10-hardening.toml` icindeki `module.sig_enforce=1` ve
 
 ---
 
+## Otomatik geri donus
+
+"Bozuk guncelleme kendini geri alir" bootc'nin kendi davranisi degil.
+bootc deployment'i stage eder; acilmazsa elinde bootloader menusu
+kalir, o kadar. Otomatik geri donus `greenboot`'tan geliyor:
+
+1. Yeni deployment stage edilirken `greenboot-set-rollback-trigger`
+   GRUB'un `boot_counter` sayacini kuruyor.
+2. Acilista `greenboot-healthcheck` zorunlu kontrolleri calistiriyor.
+3. Gecerse sayac siliniyor, `boot_success=1` yaziliyor.
+4. Gecmezse makine yeniden basliyor. Sayac sifira varinca (varsayilan
+   3 deneme) onceki deployment aciliyor.
+
+Zorunlu kontrol tek sey soruyor: **grafik oturum acildi mi?**
+Masaustunde bozuk guncellemenin asil belirtisi bu — cekirdek modulu
+surum kaymasi, bozuk bir cekirdek argumani, kirik bir mesa guncellemesi;
+hepsi ayni yerde, siyah ekranda birlesiyor.
+
+| Kontrol | Basarisiz olursa |
+|---|---|
+| `required.d/50-mfaos-desktop.sh` | geri donusu TETIKLER |
+| `wanted.d/50-mfaos-integrity.sh` | sadece gunluge yazar |
+
+`required.d`'ye kontrol eklemek kolay ama tehlikeli: her yanlis
+"basarisiz", calisan bir makineyi geri dondurur — yani kontrolun
+kendisi kesinti sebebi olur. Emin olmadigin her sey `wanted.d`'ye.
+
+**`greenboot-default-health-checks` bilerek kurulmuyor.** Icindeki
+`01_repository_dns_check.sh` *zorunlu* bir kontrol ve iki sebeple
+masaustune uymuyor: `/etc/ostree/remotes.d` yoksa dogrudan basarisiz
+oluyor (bootc ile kurulan makinede kaynak bir konteyner registry'si,
+ostree remote degil), ve depo alan adlarinin DNS cozumlemesini sart
+kosuyor — laptop ucakta ya da captive portal arkasinda agsiz acilir.
+Ikisi de saglikli bir makineyi geri dondurur.
+
+Durumu gormek:
+
+```bash
+journalctl -u greenboot-healthcheck.service -b
+sudo grub2-editenv - list | grep boot_      # boot_counter / boot_success
+```
+
+> Bu zincir **henuz gercek bir bozuk guncellemeyle test edilmedi.**
+> `DEVAM.md` Adim 2 tam olarak bunu yapiyor.
+
+---
+
 ## Gunluk kullanim
 
 ```bash
@@ -193,44 +248,54 @@ guncellemeye tasinir — ve senin bakim yukun olur.
 
 ## Yol haritasi
 
-**Faz 1 — calisir hale getir** *(simdi buradasin)*
+**Faz 1 — calisir hale getir** *(tamam)*
 - [x] Containerfile + derleme scriptleri
 - [x] sysctl / kernel arg sertlestirmesi
-- [x] CI + cosign imzalama, iki varyant
-- [x] NVIDIA varyanti (imaj derleme zamaninda akmod)
+- [x] CI + cosign imzalama
 - [x] Registry yollari dolduruldu (`ghcr.io/mcahitkutsal`)
-- [ ] cosign anahtari uret
-- [ ] **Ilk derleme — henuz hic calismadi**
-- [ ] QEMU'da boot testi (her iki varyant)
-- [ ] Laptop'a ilk kurulum
+- [x] cosign anahtari uretildi, ortak anahtar imaja girdi
+- [x] Imaj derlendi, `verify.sh` gecti, QEMU'da boot etti
+- [x] CI imaj icerigini **push'tan once** dogruluyor
+- [x] greenboot: basarisiz boot sonrasi geri donus zinciri kuruldu
+- [ ] NVIDIA varyanti — script hazir, CI'da kapali (Fedora 44 engeli)
 
-**Faz 2 — gunluk surucu yap**
+**Faz 2 — gunluk surucu yap** *(simdi buradasin)*
+- [ ] ghcr paketini herkese acik yap
+- [ ] **Geri donusu gercekten test et:** bilerek bozuk bir imaj yayinla,
+      greenboot'un devreye girdigini gor
+- [ ] Gercek makineye kurulum (`anaconda-iso`)
 - [ ] Flatpak/distrobox akisini oturt
 - [ ] Ikinci makineye kur, guncellemenin filoya yayildigini dogrula
-- [ ] Rollback'i gercekten test et (bilerek bozuk imaj yayinla)
 - [ ] `/etc` kisminda ne degistigini izle (`ostree admin config-diff`)
 - [ ] Yedekleme: `/var/home` disinda hicbir sey kalici degil
 
 **Faz 3 — zinciri muhurle**
 - [ ] MOK anahtari + NVIDIA modul imzalama (NVIDIA makineleri icin zorunlu)
 - [ ] LUKS2 + TPM2 muhurleme, yaninda kurtarma parolasi
-- [ ] Kendi Secure Boot anahtarlarini kaydet (`sbctl`)
+- [ ] Kendi Secure Boot anahtarlarini kaydet (`sbctl`) —
+      `SECURE_BOOT=1 ./test.sh vm` ile test edilir
 - [ ] `lockdown=integrity` ve `module.sig_enforce=1`'i ac
 - [ ] Sealed imaja gec: systemd-boot + imzali UKI + fs-verity'li composefs
 
----
-
 ## Bilinen riskler
 
-Hicbiri henuz test edilmedi; ilk derlemede bunlardan biriyle
-karsilasman muhtemel:
+Asagidakiler ya yasandi ya da hala acik. Derlemenin gecmesi imajin
+dogru oldugu anlamina gelmedigi icin `verify.sh` bunlarin cogunu artik
+tek tek kontrol ediyor (63 kontrol).
 
-- Taban imajda `bootc` ikilisi olmayabilir (lint adimi artik atlaniyor, derlemeyi kirmaz)
-- `avahi` kaldirma bagimlilik zincirini sürükleyebilir
-- `flatpak-system-update.timer` bu isimde olmayabilir
-- `firewall-offline-cmd --set-default-zone=block` mDNS ve yazici kesfini kirar
-- RPM Fusion surumu taban imaj surumuyle eslesmezse paket kurulumu duser
-- NVIDIA: `akmods` cekirdek surumu kaymasi — en kirilgan nokta burasi
+- NVIDIA: Fedora 44'te konteyner icinde akmod derlenemiyor
+  (`akmodsbuild` kontrolu `[[ -w / ]]`'ye bakiyor). Varyant CI'da
+  kapali; cozum ublue-os/akmods'un hazir RPM'lerini kopyalamak.
+- `firewall-offline-cmd --set-default-zone=block` mDNS ve yazici
+  kesfini kirar. Bilincli taviz — `verify.sh` artik en azindan
+  uygulanip uygulanmadigini dogruluyor.
+- RPM Fusion surumu taban imaj surumuyle eslesmezse paket kurulumu duser.
+- Fedora 45 gecisinde derleme scriptleri kirilacak: taban imaj degisince
+  paket adlari ve dizin yapilari kayiyor.
+- greenboot geri donusu GRUB'a bagli ve **henuz gercek bir bozuk
+  guncellemeyle test edilmedi.** Ayrica `/boot` md RAID1 uzerindeyse
+  `boot_counter` kalici olmuyor (greenboot-rs #220) — tek diskli
+  kurulumda sorun degil.
 
 ---
 
