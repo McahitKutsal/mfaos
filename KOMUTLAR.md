@@ -107,7 +107,9 @@ elle yazmak zorunda kalirsin. VM icinde **bir kez**:
 sudo systemctl enable --now sshd
 ```
 
-Sonra host'tan baglan — port yonlendirmesi `test.sh` icinde hazir:
+Bu komut **QEMU penceresinde** yazilir; ssh henuz calismadigi icin tek
+giris yolu o. Ancak ondan sonra host'tan baglanabilirsin — port
+yonlendirmesi `test.sh` icinde hazir:
 
 ```bash
 wsl -d Ubuntu                      # DUZ `wsl` yazma, asagiya bak
@@ -231,6 +233,8 @@ derleme bunu `UYARI` olarak yazar ama durmaz.
 | `untracked working tree files would be overwritten` | `~/mfaos`'ta `curl` ile dosya indirmissin; orada gerek yok: `rm rollback-test.sh && git pull` |
 | `rollback-test.sh` "ostree degil" diyor | Dogru davranis — gelistirme makinesinde kosuyorsun, VM'de kos |
 | `-ash: ssh: not found`, prompt `MSI:~#` | Docker Desktop'in WSL distrosundasin, Ubuntu degil: `wsl -d Ubuntu` |
+| `ssh -p 2222` cevap vermiyor, asili kaliyor | VM acik ama icinde `sshd` kapali. QEMU baglantiyi kabul edip misafire ulasamadigi icin REDDETMIYOR, asiyor. QEMU penceresinden gir ve `sudo systemctl enable --now sshd` |
+| `ssh -p 2222` → `Connection refused` | VM hic calismiyor: `./test.sh boot` |
 
 ---
 
