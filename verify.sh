@@ -326,8 +326,51 @@ if [[ -f "${GDM_PNG}" ]]; then
 fi
 
 # ---------------------------------------------------------------
+head_ "7. GNOME arayuzu"
+# ---------------------------------------------------------------
+# Bagis bildirimi. Derlenmis local db yukarida kontrol ediliyor;
+# burada anahtarin gercekten yazildigina bakiyoruz.
+DON=/etc/dconf/db/local.d/50-mfaos-donation
+if grep -q '^donation-reminder-enabled=false$' "${DON}" 2>/dev/null; then
+    ok "bagis bildirimi kapatilmis"
+else
+    bad "bagis bildirimi kapatilmamis (${DON})"
+fi
+
+# "Support GNOME" kutucugu. Overlay ve onu devreye alan env dosyasi
+# BIRLIKTE var olmak zorunda: biri varken digeri yoksa 80-gnome.sh
+# yarim kalmis demektir ve bu sessizce gecer.
+OVL=/usr/share/mfaos/cc-about-page.ui
+ENVF=/etc/environment.d/90-mfaos-gnome.conf
+if [[ -f "${OVL}" && -f "${ENVF}" ]]; then
+    if grep -q "G_RESOURCE_OVERLAYS=.*=${OVL}\$" "${ENVF}" 2>/dev/null; then
+        ok "About sayfasi overlay'i devrede"
+    else
+        bad "overlay var ama env dosyasi onu gostermiyor"
+    fi
+
+    if grep -q '<property name="visible">0</property>' "${OVL}" 2>/dev/null; then
+        ok "bagis kutucugu gizlenmis"
+    else
+        bad "overlay'de visible=0 yok — kutucuk gorunur kalir"
+    fi
+
+    # Bozuk bir .ui Ayarlar penceresini HIC actirmaz, o yuzden
+    # dosyanin gercekten XML oldugunu da goruyoruz.
+    if head -c 64 "${OVL}" 2>/dev/null | grep -q '<?xml\|<interface'; then
+        ok "overlay XML olarak basliyor"
+    else
+        bad "overlay XML gibi gorunmuyor — Ayarlar acilmayabilir"
+    fi
+elif [[ -f "${OVL}" || -f "${ENVF}" ]]; then
+    bad "overlay/env ikilisinden sadece biri var — 80-gnome.sh yarim kalmis"
+else
+    warn "About sayfasindaki bagis kutucugu duruyor (overlay uretilemedi)"
+fi
+
+# ---------------------------------------------------------------
 if [[ "${NVIDIA_ENABLED:-0}" == "1" ]]; then
-head_ "7. NVIDIA"
+head_ "8. NVIDIA"
 # ---------------------------------------------------------------
     have_file /usr/lib/bootc/kargs.d/20-nvidia.toml "nvidia cekirdek argumanlari"
 

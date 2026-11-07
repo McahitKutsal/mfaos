@@ -303,7 +303,7 @@ slotlara `wide-*.png` gidiyor. En gorunur ornegi `system-logo-white.png`
 ve GDM logosu. `verify.sh` giris ekrani logosunun orani kareye dustuyse
 HATA veriyor.
 
-**Koyu zemin slotlari beyaz varyant istiyor — HENUZ URETILMEDI.** Yedi
+**Koyu zemin slotlari beyaz varyant istiyor — HENUZ URETILMEDI.** Dokuz
 dosya (`*whitelogo*`, `*darkbackground*`, `system-logo-white.png`,
 plymouth `watermark.png`, GDM logosu) siyah/koyu zemine ciziliyor.
 Oraya lacivert-mercan armayi koyunca logo GORUNMEZ olabilir — ve bu,
@@ -315,10 +315,28 @@ WHITE=logo/simge/simge-beyaz-1024.png \
   ./add-logo.sh logo.png logo/kilit/yatay-kilit-mercan-2048.png
 ```
 
-Uretmezsen derleme `UYARI: 7 koyu zemin slotuna renkli arma kondu`
+Uretmezsen derleme `UYARI: 9 koyu zemin slotuna renkli arma kondu`
 yaziyor, `verify.sh` de ayni seyi uyari olarak tekrarliyor. Yatay beyaz
 kaynak yok; o yuzden genis koyu slotlar renkli yatayi aliyor (kare
 beyaza DUSMUYOR — genis slota kare koymak daha kotu).
+
+**GNOME'un bagis kutucugu `.ui`'ye SABIT gomulu — overlay surume
+bagli.** Ayarlar > Sistem Hakkinda'daki "Support GNOME" satirinin
+id'si yok, `visible` ozelligi hicbir seye bagli degil, GSettings
+anahtari yok, meson secenegi de yok. Bildirimi kapatmak kolay
+(`donation-reminder-enabled=false`, gnome-settings-daemon anahtari
+okuyup hemen cikiyor) ama kutucuk ayri bir is: `80-gnome.sh` derlenmis
+`.ui`'yi `gresource extract` ile cikarip `visible=0` ekliyor ve
+`G_RESOURCE_OVERLAYS` ile devreye aliyor.
+
+Iki kurali bozma: (1) **`.ui`'yi depoya koyma**, kurulu binary'den
+derleme aninda uret — depoda duran eski bir kopya C kodu ile
+uyusmazsa Ayarlar penceresi HIC acilmaz. (2) **Yama tutmazsa
+derlemeyi patlatma**, uyarip gec; kotu senaryo kutucugun kalmasi,
+bozuk bir Ayarlar degil. GNOME o satira bir gun `id` verirse desen
+tutmaz, `verify.sh` "kutucuk duruyor" diye uyarir ve orada yeniden
+bakmak gerekir. Yama sadece ekleme yapiyor: cikti boyutu girdiden
+tam olarak eklenen ozellik kadar buyuk olmali, degilse atlaniyor.
 
 **Ucuncu parti GitHub action'lari SHA'ya pinli olmali.** Derleme isi
 `COSIGN_PRIVATE_KEY` ve `packages: write` tasiyor. `@main` ile duran
@@ -363,7 +381,8 @@ build_files/30-desktop.sh   flatpak + guncelleme timer'i
 build_files/40-nvidia.sh    NVIDIA (su an CI'da kapali)
 build_files/50-branding.sh  os-release / sistem kimligi
 build_files/60-logos.sh     fedora-logos logolari (allowlist) + GDM logosu
-build_files/70-locale.sh    Turkce dil ve klavye
+build_files/70-locale.sh     Turkce dil ve klavye
+build_files/80-gnome.sh      GNOME bagis istekleri (bildirim + About kutucugu)
 files/                      imajin kok dizinine oldugu gibi kopyalanir
 files/usr/lib/greenboot/    saglik kontrolleri (required.d = geri donus tetikler)
 logo/                       logo kaynaklari (imaja girmez)

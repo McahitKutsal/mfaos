@@ -281,7 +281,7 @@ guncellemeye tasinir — ve senin bakim yukun olur.
 
 Asagidakiler ya yasandi ya da hala acik. Derlemenin gecmesi imajin
 dogru oldugu anlamina gelmedigi icin `verify.sh` bunlarin cogunu artik
-tek tek kontrol ediyor (63 kontrol).
+tek tek kontrol ediyor; kontrol sayisini betik kendisi bildiriyor.
 
 - NVIDIA: Fedora 44'te konteyner icinde akmod derlenemiyor
   (`akmodsbuild` kontrolu `[[ -w / ]]`'ye bakiyor). Varyant CI'da
