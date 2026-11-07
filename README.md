@@ -11,6 +11,9 @@ onu alir.
 
 ---
 
+> **Calismaya devam etmek icin:** `DEVAM.md` — nerede kaldigimiz,
+> sirada ne var, hangi tuzaklara bir daha dusmemek gerektigi.
+
 ## Iki varyant
 
 Filo karisik oldugu icin tek imaj dogru cozum degil:
