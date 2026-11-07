@@ -93,19 +93,60 @@ DISK_CONFIG=disk-config.toml ./test.sh vm   # gercek kurulum duzeniyle
 
 ## Katman 4: guncelleme ve geri donus testi
 
-Bunlar **VM'in icinde** calisiyor — `./test.sh boot` ile acilan
-pencerede, host'ta degil. Betigi VM'e almak icin (sshd bilerek kapali,
-depo public):
+> **Bu bolumun TAMAMI VM'in icinde calisir.** WSL'de (`~/mfaos`)
+> denersen `sudo: 'bootc': command not found` alirsin — orada bootc
+> yok, olmamasi da normal. VM'i acmak: `./test.sh boot`, giris
+> **test / test**.
+
+### 0. VM'de rahat bir terminal (atlamak isteyebilirsin ama atlama)
+
+QEMU penceresinde kaydirma da kopyala-yapistir da yok; uzun komutlari
+elle yazmak zorunda kalirsin. VM icinde **bir kez**:
+
+```bash
+sudo systemctl enable --now sshd
+```
+
+Sonra WSL'den — port yonlendirmesi `test.sh` icinde hazir:
+
+```bash
+ssh -p 2222 test@localhost        # parola: test
+```
+
+`sshd` imajda bilerek kapali (`20-hardening.sh`). Feda edilebilir test
+VM'inde acmak sorun degil; gercek makinede acma.
+
+### Betigi VM'e almak
+
+VM'de depo klonu yok, o yuzden indiriyoruz:
 
 ```bash
 curl -sSLO https://raw.githubusercontent.com/McahitKutsal/mfaos/main/rollback-test.sh
 chmod +x rollback-test.sh
 ```
 
-### 0. Guncelleme kaynagini duzelt — atlarsan 2. adim patlar
+**WSL tarafinda `curl` kullanma.** `~/mfaos` deponun klonu; dosya
+zaten `git pull` ile geliyor ve indirilen kopya `git pull`'u bloklar
+("untracked working tree files would be overwritten"). Oldu ise:
+`rm rollback-test.sh && git pull`.
+
+### 1. Dogru yerde miyim + zincir ayakta mi
+
+```bash
+sudo ./rollback-test.sh status
+```
+
+Yanlis makinedeysen **bu komut hemen durur ve soyler** — ilk adim
+olarak bunu kosmanin sebebi bu. Dogru yerdeysen deployment'lari,
+greenboot servislerini, saglik kontrolunun bu acilista gercekten
+kosup kostugunu ve GRUB'un `boot_success` / `boot_counter`
+degiskenlerini raporlar.
+
+### 2. Guncelleme kaynagini duzelt — atlarsan 3. adim patlar
 
 VM yerelde derlenmis imajdan kuruldugu icin bootc'nin kayitli kaynagi
-`localhost/mfaos:44` ve bu VM icinden **cozulemez**. Bir kez:
+`localhost/mfaos:44` ve bu VM icinden **cozulemez**. 1. adim bunu
+tespit edip zaten soyluyor. Bir kez:
 
 ```bash
 sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44
@@ -116,17 +157,7 @@ Bu adim bedavaya **imza zincirini de** sinar: `policy.json`
 sigstoreSigned istiyor, ortak anahtar `/etc/pki/containers/mfaos.pub`.
 Imaj reddedilirse zincirde sorun var ve bunu burada ogrenirsin.
 
-### 1. Zincir ayakta mi
-
-```bash
-sudo ./rollback-test.sh status
-```
-
-Deployment'lari, greenboot servislerini, saglik kontrolunun bu
-acilista gercekten kosup kostugunu ve GRUB'un `boot_success` /
-`boot_counter` degiskenlerini raporluyor.
-
-### 2. ELLE geri donus
+### 3. ELLE geri donus
 
 ```bash
 sudo bootc upgrade && bootc status     # yeni surum "staged" gorunmeli
@@ -135,7 +166,7 @@ sudo systemctl reboot
 sudo bootc rollback && sudo systemctl reboot
 ```
 
-### 3. OTOMATIK geri donus — asil test
+### 4. OTOMATIK geri donus — asil test
 
 Ikisi ayri sey: elle geri donus calisiyor diye otomatigi calisiyor
 sanma. Otomatik olan GRUB'un `boot_counter`'i kalici yazmasina bagli.
@@ -157,7 +188,7 @@ sudo ./rollback-test.sh disarm
 
 Kontrol 3 basarisizliktan sonra kendini kapatiyor, yani VM saglikli
 bir acilisa mutlaka ulasiyor — kilitlenme yok. `disarm` yine de
-gerekli: sayac /var'da duruyor.
+gerekli: sayac `/var`'da duruyor.
 
 ---
 
@@ -187,6 +218,9 @@ derleme bunu `UYARI` olarak yazar ama durmaz.
 | QEMU penceresi acilmiyor | `echo $DISPLAY` bos ise WSLg yok; `wsl --update` |
 | Disk doluyor | En az 50GB bos gerekiyor: taban ~8GB, katmanlar ~2GB, qcow2 ~15GB |
 | Eski sistemi goruyorsun | `REBUILD_DISK=1 ./test.sh vm` — qcow2 onbellekten geliyordu |
+| `bootc: command not found` | WSL'desin, VM'de degilsin. Katman 4 komutlari VM icinde kosar: `./test.sh boot` |
+| `untracked working tree files would be overwritten` | `~/mfaos`'ta `curl` ile dosya indirmissin; orada gerek yok: `rm rollback-test.sh && git pull` |
+| `rollback-test.sh` "ostree degil" diyor | Dogru davranis — gelistirme makinesinde kosuyorsun, VM'de kos |
 
 ---
 

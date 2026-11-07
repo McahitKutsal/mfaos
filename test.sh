@@ -205,6 +205,13 @@ vm() {
     fi
 
     echo "==> Baslatiliyor: ${qcow}"
+    # QEMU penceresinde calismak eziyet: kaydirma yok, kopyala-yapistir
+    # yok. 2222 yonlendirmesi, VM icinde bir kez sshd acildiktan sonra
+    # WSL terminalinden calismayi mumkun kiliyor. sshd imajda bilerek
+    # kapali (20-hardening.sh); feda edilebilir test VM'inde acmak
+    # sorun degil, gercek makinede acma.
+    echo "    VM icinde bir kez: sudo systemctl enable --now sshd"
+    echo "    sonra WSL'den:     ssh -p 2222 test@localhost  (parola: test)"
     qemu-system-x86_64 \
         -M "${machine}" -cpu host -enable-kvm \
         -m 4096 -smp 4 \
@@ -212,7 +219,8 @@ vm() {
         -drive if=pflash,format=raw,readonly=on,file="${ovmf_code}" \
         -drive if=pflash,format=raw,file="${nvram}" \
         -drive file="${qcow}",if=virtio,format=qcow2 \
-        -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+        -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+        -device virtio-net-pci,netdev=net0 \
         -display gtk
 }
 
