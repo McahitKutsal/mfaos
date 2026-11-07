@@ -61,7 +61,34 @@ skip() {
     exit 0
 }
 
-command -v gresource >/dev/null 2>&1 || skip "gresource araci yok (glib2)"
+# gresource, taban imajda OLMAYAN glib2-devel'den geliyor. Gecici
+# kuruyoruz: Containerfile tum derleme adimlarini tek RUN katmaninda
+# calistirdigi icin ayni betik icinde kaldirinca imajda iz kalmiyor.
+# (Alternatif cok asamali derleme olurdu; mantigi iki dosyaya bolmeye
+# bu kadarlik bir is icin deger yok.)
+PKG="dnf5 -y"; command -v dnf5 >/dev/null 2>&1 || PKG="dnf -y"
+GLIB_DEVEL_INSTALLED=0
+
+# Temizlik HER cikis yolunda calismali: skip() de buradan geciyor.
+# Yoksa imajda bir -devel paketi ve onun CVE yuzeyi kalir.
+cleanup() {
+    [[ -n "${TMP_IN:-}"  ]] && rm -f "${TMP_IN}"
+    [[ -n "${TMP_OUT:-}" ]] && rm -f "${TMP_OUT}"
+    if [[ "${GLIB_DEVEL_INSTALLED}" == "1" ]]; then
+        echo "  glib2-devel kaldiriliyor"
+        ${PKG} remove glib2-devel >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+trap cleanup EXIT
+
+if ! command -v gresource >/dev/null 2>&1; then
+    echo "  gresource yok, glib2-devel gecici kuruluyor"
+    if ${PKG} install glib2-devel >/dev/null 2>&1; then
+        GLIB_DEVEL_INSTALLED=1
+    fi
+fi
+command -v gresource >/dev/null 2>&1 || skip "gresource kurulamadi (glib2-devel)"
 
 # Kaynak hangi dosyaya gomulu? Su an ana binary'de ama yer
 # degistirebilir diye sabitlemek yerine ariyoruz. Kaynak yolu da
@@ -84,7 +111,6 @@ done
 
 TMP_IN="$(mktemp)"
 TMP_OUT="$(mktemp)"
-trap 'rm -f "${TMP_IN}" "${TMP_OUT}"' EXIT
 
 gresource extract "${RES_FILE}" "${RES_PATH}" > "${TMP_IN}" 2>/dev/null \
     || skip "gresource extract basarisiz (${RES_PATH})"

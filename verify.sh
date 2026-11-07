@@ -368,6 +368,16 @@ else
     warn "About sayfasindaki bagis kutucugu duruyor (overlay uretilemedi)"
 fi
 
+# 80-gnome.sh gresource icin glib2-devel'i GECICI kuruyor ve ayni
+# betikte kaldiriyor. Kaldirma `|| true` ile cagriliyor — yani sessizce
+# dusebilir ve imajda bir -devel paketi, onunla birlikte gereksiz CVE
+# yuzeyi kalir. Bu projede `|| true` olan her yerin bir kontrolu var.
+if rpm -q glib2-devel >/dev/null 2>&1; then
+    bad "glib2-devel imajda kalmis — gecici kurulum kaldirilamamis"
+else
+    ok "gecici derleme paketi imajda yok (glib2-devel)"
+fi
+
 # ---------------------------------------------------------------
 if [[ "${NVIDIA_ENABLED:-0}" == "1" ]]; then
 head_ "8. NVIDIA"

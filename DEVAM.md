@@ -338,6 +338,12 @@ tutmaz, `verify.sh` "kutucuk duruyor" diye uyarir ve orada yeniden
 bakmak gerekir. Yama sadece ekleme yapiyor: cikti boyutu girdiden
 tam olarak eklenen ozellik kadar buyuk olmali, degilse atlaniyor.
 
+`gresource` taban imajda **yok**, `glib2-devel`'den geliyor — ilk
+denemede derleme tam burada atladi. Adim paketi gecici kuruyor ve ayni
+betikte kaldiriyor; derlemenin tamami tek `RUN` katmani oldugu icin
+imajda iz kalmiyor. Kaldirma `|| true` ile cagrildigi icin `verify.sh`
+paketin gercekten gittigini ayrica kontrol ediyor.
+
 **Ucuncu parti GitHub action'lari SHA'ya pinli olmali.** Derleme isi
 `COSIGN_PRIVATE_KEY` ve `packages: write` tasiyor. `@main` ile duran
 bir action, o branch'i kontrol eden herkese imzalama anahtarini
