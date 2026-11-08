@@ -202,6 +202,32 @@ cmd_arm() {
     require_ostree
     require_root
 
+    # Ustte bekleyen bir gecis varken arm etmek testi OKUNAMAZ hale
+    # getiriyor: reboot'ta hangi deployment'in acilacagi artik bizim
+    # kurdugumuz senaryoya degil, o eski duruma bagli oluyor. Bir
+    # kosuda tam olarak bu oldu — `bootOrder: rollback` ustte kalmisti,
+    # acilis bambaska bir deployment'ta takildi ve hukum cikmadi.
+    local st
+    st="$(bootc status --format=yaml 2>/dev/null || true)"
+    if grep -qE '^[[:space:]]*bootOrder:[[:space:]]*rollback' <<<"${st}" \
+       || grep -qE '^[[:space:]]*rollbackQueued:[[:space:]]*true' <<<"${st}"; then
+        echo "HATA: bekleyen bir geri donus var (bootOrder/rollbackQueued)." >&2
+        echo "      Once temiz bir zemine gec, yoksa test hukum vermez:" >&2
+        echo "        sudo bootc rollback && sudo systemctl reboot" >&2
+        echo "      Acildiktan sonra tekrar: sudo $0 arm" >&2
+        exit 1
+    fi
+    if grep -qE '^  staged:' <<<"${st}" \
+       && ! grep -qE '^  staged:[[:space:]]*null' <<<"${st}"; then
+        echo "HATA: zaten stage edilmis bir deployment var." >&2
+        echo "      arm, stage etmeden ONCE kosulmak zorunda: kasitli" >&2
+        echo "      basarisiz kontrol /etc'de yasiyor ve yeni deployment'a" >&2
+        echo "      ancak stage aninda yapilan 3'lu birlestirmeyle gecer." >&2
+        echo "      Bekleyen stage'i at, sonra sirayi duzgun yap:" >&2
+        echo "        sudo bootc rollback      # stage'i geri alir" >&2
+        exit 1
+    fi
+
     # Kontrol KENDINI SINIRLIYOR, ve bu sart. /etc bir sonraki
     # deployment'a merge ile tasiniyor, ama GERI DONUS HEDEFINDE de ayni
     # dosya var. Kendini kapatmasa makine saglikli bir acilisa hic
@@ -220,21 +246,33 @@ cmd_arm() {
 # KASITLI BASARISIZ greenboot kontrolu — Katman 4 testi icin.
 # rollback-test.sh arm kurdu; disarm kaldirir.
 #
-# 3 basarisizliktan sonra KENDINI KAPATIR: yoksa geri donus hedefinde de
-# basarisiz olur ve sistem saglikli bir acilisa hic ulasamaz.
+# Esik, GREENBOOT_MAX_BOOT_ATTEMPTS'ten BIR FAZLA olmak ZORUNDA. Ilk
+# olcumde ikisi de 3'tu ve test hic geri donus uretmedi: greenboot sayaci
+# 3 -> 2 -> 1 diye indirdi, dorduncu acilista bu kontrol kendini kapatti,
+# greenboot sistemi "saglikli" gorup sayaci TEMIZLEDI ve bozuk
+# deployment'i iyi olarak muhurledi. Sayacin 0'a inmesi icin dorduncu
+# acilista da basarisiz olmak gerekiyor. Esigi gectikten sonra kapaniyor
+# ki geri donus hedefinde de basarisiz olup makineyi kilitlemesin.
 set -uo pipefail
 # greenboot kontrolleri noclobber ACIK bir ortamda kosuyor: `>` var olan
 # dosyayi REDDEDIYOR. Ilk denemede sayac bu yuzden 1'de kaldi ve
 # kendini kapatma korumasi hic devreye girmedi. Acikca kapatiyoruz.
 set +o noclobber
 C=/var/lib/mfaos-rollback-test.count
+MAX=3
+for f in /etc/greenboot/greenboot.conf /usr/lib/greenboot/greenboot.conf; do
+    [[ -r "${f}" ]] || continue
+    v="$(grep -hm1 '^[[:space:]]*GREENBOOT_MAX_BOOT_ATTEMPTS=' "${f}"          | cut -d= -f2 | tr -dc '0-9')"
+    if [[ -n "${v}" ]]; then MAX="${v}"; break; fi
+done
+LIMIT=$(( MAX + 1 ))
 n="$(cat "${C}" 2>/dev/null || echo 0)"
-if [[ "${n}" -ge 3 ]]; then
+if [[ "${n}" -ge "${LIMIT}" ]]; then
     echo "geri donus testi tamamlandi (${n} basarisizlik), kontrol kendini kapatti"
     exit 0
 fi
 echo "$((n + 1))" > "${C}"
-echo "KASITLI BASARISIZLIK #$((n + 1)) — Katman 4 geri donus testi" >&2
+echo "KASITLI BASARISIZLIK #$((n + 1))/${LIMIT} — Katman 4 geri donus testi" >&2
 exit 1
 CHK
     chmod 0755 "${CHECK}"
@@ -243,12 +281,16 @@ CHK
     echo "  ${CHECK}"
     echo
     echo "Sirada:"
-    echo "  1. sudo bootc upgrade        # yeni deployment stage edilir"
+    echo "  1. sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44"
+    echo "     (upgrade DEGIL: kaynak localhost kaldiysa hicbir sey stage etmez)"
     echo "  2. bootc status              # 'staged' gorunmeli"
     echo "  3. sudo systemctl reboot"
     echo
-    echo "Beklenen: yeni deployment acilmayi 3 kez dener, her denemede"
-    echo "boot_counter iner, sifira varinca ONCEKI deployment acilir."
+    echo "Beklenen: kontrol DORT acilis boyunca basarisiz olur. greenboot"
+    echo "ilk basarisizlikta boot_counter'i kurar, sonrakilerde indirir;"
+    echo "sifira varinca ONCEKI deployment acilir. Dorduncu basarisizlik"
+    echo "sart: ucte kesilirse sayac 1'de kalir, greenboot sistemi saglikli"
+    echo "gorur ve bozuk deployment'i iyi olarak muhurler."
     echo
     echo "Donduktan sonra:  sudo $0 status   sonra   sudo $0 disarm"
 }
