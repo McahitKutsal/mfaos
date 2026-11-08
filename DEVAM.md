@@ -557,6 +557,14 @@ HIC denetlenmedi — iceride bir kusur olsa ancak VM'de gorunurdu.
 Kapsam artik `git ls-files -z '*.sh'` ile geliyor, yani yeni bir dizin
 acilsa bile kendiliginden genisliyor.
 
+Ama kapsami git'e sormak TEK BASINA yetmiyor. Bos bir listede
+`xargs -0 -n1 bash -n` argumansiz bash kosuyor, bos stdin'i okuyor ve
+SESSIZCE 0 donuyor — yani glob kazara hicbir seyle eslesmezse lint
+yesil kaliyor ve hicbir seyin denetlenmedigi anlasilmiyor. (shellcheck
+bu durumda patlardi, cunku dosyasiz cagrilinca hata veriyor; iki adim
+ayni girdide farkli davraniyor.) O yuzden adim artik listeyi basiyor
+ve bos olmadigini dogruluyor.
+
 Ayni mantik `verify.sh` icin de gecerli ve bu projede bes kez isiradi:
 yeni bir dosya ekledigin anda onun kontrolunu de yaz.
 

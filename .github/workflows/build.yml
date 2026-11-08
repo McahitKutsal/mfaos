@@ -183,14 +183,27 @@ jobs:
       # betik hic denetlenmedi, kusur ancak VM'de gorunurdu. git ls-files
       # ile yeni bir dizin acilsa bile kapsam kendiliginden genisliyor.
       #
+      # Liste BASILIYOR ve bos olmadigi dogrulaniyor. Sebebi: bos girdide
+      # `xargs -0 -n1 bash -n` argumansiz bash kosar, bos stdin'i okur ve
+      # SESSIZCE 0 doner — yani kapsam kazara cokerse lint yesil kalir ve
+      # hicbir sey denetlenmedigi anlasilmaz.
+      #
       # Sozdizimi kontrolu CRLF ile bozulmus bir scripti de yakalar —
       # .gitattributes'in unuttugu bir dosya olursa.
       - name: Sozdizimi
-        run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
+        run: |
+          mapfile -d '' -t scripts < <(git ls-files -z '*.sh')
+          if [[ ${#scripts[@]} -eq 0 ]]; then
+            echo "::error::Hicbir betik bulunamadi — lint kapsami cokmus."
+            exit 1
+          fi
+          printf '  %s\n' "${scripts[@]}"
+          echo "toplam ${#scripts[@]} betik"
+          for f in "${scripts[@]}"; do bash -n "$f"; done
 
       # SC2154: os-release `source` edildikten sonra gelen degiskenler
       # (ID, PRETTY_NAME) shellcheck tarafindan gorulemez.
       - name: shellcheck
         run: |
-          git ls-files -z '*.sh' \
-            | xargs -0 shellcheck --severity=warning --exclude=SC2154
+          mapfile -d '' -t scripts < <(git ls-files -z '*.sh')
+          shellcheck --severity=warning --exclude=SC2154 "${scripts[@]}"
