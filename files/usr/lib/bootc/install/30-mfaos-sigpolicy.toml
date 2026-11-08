@@ -1,0 +1,15 @@
+# Yeni kurulumlar imza DOGRULAYAN kokenle baslasin.
+#
+# Neden gerekli: bootc, koken olarak "ostree-unverified-registry:" yazarsa
+# `bootc upgrade` imzaya HIC bakmiyor. CI cosign ile imzaliyor, anahtar
+# imajda, registries.d'de sigstore eklentileri acik — ama kurulum bu
+# bayrak olmadan yapilirsa butun bu zincir yukseltme yolunda kullanilmiyor.
+# VM'de olculdu: koken `ostree-unverified-registry` idi.
+#
+# Bu bayrak ayni zamanda policy.json'un VARSAYILANININ imza sart kosmasini
+# dayatiyor (kilavuz: "image pulls will be rejected if the policy file
+# specifies insecureAcceptAnything as the default"). Bu yuzden
+# files/etc/containers/policy.json'da varsayilan `reject`; ihtiyac duyulan
+# kayit defterleri orada tek tek sayiliyor.
+[install]
+enforce-container-sigpolicy = true

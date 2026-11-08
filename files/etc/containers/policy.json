@@ -1,7 +1,7 @@
 {
   "default": [
     {
-      "type": "insecureAcceptAnything"
+      "type": "reject"
     }
   ],
   "transports": {
@@ -23,9 +23,74 @@
             "type": "matchRepository"
           }
         }
+      ],
+      "registry.fedoraproject.org": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ],
+      "registry.access.redhat.com": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ],
+      "registry.redhat.io": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ],
+      "docker.io": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ],
+      "quay.io": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ],
+      "ghcr.io": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    },
+    "containers-storage": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
       ]
     },
     "docker-daemon": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    },
+    "dir": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    },
+    "oci": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    },
+    "oci-archive": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    },
+    "docker-archive": {
       "": [
         {
           "type": "insecureAcceptAnything"

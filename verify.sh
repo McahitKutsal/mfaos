@@ -94,6 +94,58 @@ else
     bad "cosign ortak anahtari yok/gecersiz — bootc upgrade imaji REDDEDER"
 fi
 
+# bootc'un --enforce-container-sigpolicy bayragi (ve imajdaki kurulum
+# varsayilani) policy.json'un VARSAYILANININ imza sart kosmasini dayatiyor.
+# Kilavuz birebir: "image pulls will be rejected if the policy file
+# specifies insecureAcceptAnything as the default". Varsayilan acik
+# kalirsa kurulum imza dogrulamayan kokenle baslar ve `bootc upgrade`
+# imzaya HIC bakmaz — VM'de olculdu, koken ostree-unverified-registry'ydi.
+POLICY=/etc/containers/policy.json
+DEF_TYPE="$(sed -n '/"default"/,/\]/p' "${POLICY}" 2>/dev/null \
+            | grep -o '"type"[[:space:]]*:[[:space:]]*"[A-Za-z]*"' \
+            | head -1 | sed 's/.*"\([A-Za-z]*\)"$/\1/')"
+if [[ "${DEF_TYPE}" == "insecureAcceptAnything" ]]; then
+    bad "policy.json varsayilani insecureAcceptAnything — enforce-container-sigpolicy REDDEDER"
+elif [[ -n "${DEF_TYPE}" ]]; then
+    ok "policy.json varsayilani imzasizi gecirmiyor (${DEF_TYPE})"
+else
+    bad "policy.json varsayilani okunamadi"
+fi
+
+SIGTOML=/usr/lib/bootc/install/30-mfaos-sigpolicy.toml
+if grep -qE '^[[:space:]]*enforce-container-sigpolicy[[:space:]]*=[[:space:]]*true' "${SIGTOML}" 2>/dev/null; then
+    ok "yeni kurulumlar imza dogrulayan kokenle baslar"
+else
+    bad "${SIGTOML} eksik — kurulum ostree-unverified-registry kokeni kullanir"
+fi
+
+# Varsayilan reddetmeye cekildiginde YEREL tasiyicilar acikta kalmak
+# zorunda: aksi halde `podman run` kendi depolamasindaki imaji bile
+# reddeder. Bu denetim o gerilemeyi yakalamak icin var.
+for tsp in containers-storage docker-daemon oci-archive; do
+    if grep -q "\"${tsp}\"" "${POLICY}" 2>/dev/null; then
+        ok "yerel tasiyici acik: ${tsp}"
+    else
+        bad "yerel tasiyici ${tsp} yok — podman kendi imajlarini reddeder"
+    fi
+done
+
+# distrobox/toolbox'in varsayilan kayit defteri de sayilmis olmali,
+# yoksa `distrobox create` varsayilan imaji cekemez (olculdu: varsayilan
+# registry.fedoraproject.org/fedora-toolbox).
+if grep -q '"registry.fedoraproject.org"' "${POLICY}" 2>/dev/null; then
+    ok "distrobox varsayilan kayit defteri policy.json'da"
+else
+    warn "registry.fedoraproject.org sayilmamis — distrobox varsayilan imaji cekilemez"
+fi
+
+KP="$(grep -o '"keyPath"[^,]*' "${POLICY}" 2>/dev/null | head -1 | grep -o '/[^"]*')"
+if [[ -n "${KP}" && -f "${KP}" ]]; then
+    ok "policy.json keyPath mevcut dosyayi gosteriyor"
+else
+    bad "policy.json keyPath hatali: '${KP:-bos}'"
+fi
+
 # ---------------------------------------------------------------
 head_ "3. Guncelleme ve geri donus"
 # ---------------------------------------------------------------
