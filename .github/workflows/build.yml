@@ -178,17 +178,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Sozdizimi kontrolu. CRLF satir sonu ile bozulmus bir scripti de
-      # burada yakalar — .gitattributes'in unuttugu bir dosya olursa.
+      # Kapsami elle saymiyoruz, git'e soruyoruz. Uc glob elle yazilmisti
+      # ve files/usr/libexec/mfaos/ eklendiginde guncellenmedi: yeni
+      # betik hic denetlenmedi, kusur ancak VM'de gorunurdu. git ls-files
+      # ile yeni bir dizin acilsa bile kapsam kendiliginden genisliyor.
+      #
+      # Sozdizimi kontrolu CRLF ile bozulmus bir scripti de yakalar —
+      # .gitattributes'in unuttugu bir dosya olursa.
       - name: Sozdizimi
-        run: |
-          for f in ./*.sh build_files/*.sh files/usr/lib/greenboot/check/*/*.sh; do
-            bash -n "$f" || exit 1
-          done
+        run: git ls-files -z '*.sh' | xargs -0 -n1 bash -n
 
       # SC2154: os-release `source` edildikten sonra gelen degiskenler
       # (ID, PRETTY_NAME) shellcheck tarafindan gorulemez.
       - name: shellcheck
         run: |
-          shellcheck --severity=warning --exclude=SC2154 \
-            ./*.sh build_files/*.sh files/usr/lib/greenboot/check/*/*.sh
+          git ls-files -z '*.sh' \
+            | xargs -0 shellcheck --severity=warning --exclude=SC2154

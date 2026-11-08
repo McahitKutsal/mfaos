@@ -240,7 +240,8 @@ vm() {
         -drive file="${qcow}",if=virtio,format=qcow2 \
         -netdev user,id=net0,hostfwd=tcp::2222-:22 \
         -device virtio-net-pci,netdev=net0 \
-        -serial "file:${serial}" \n        -display gtk
+        -serial "file:${serial}" \
+        "${display_args[@]}"
 }
 
 case "${1:-build}" in
