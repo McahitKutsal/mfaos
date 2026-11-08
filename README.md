@@ -67,10 +67,36 @@ sudo bootc switch ghcr.io/mcahitkutsal/mfaos-nvidia:44
 ```
 
 Zincirdeki kritik halka `policy.json`: mfaos depolarindan gelen imzasiz
-bir imaj makineye hic inmez. Dikkat — politikanin varsayilani
-`insecureAcceptAnything`, yani garanti "mfaos deposu dogrulanir",
-"hicbir imzasiz imaj kabul edilmez" degil. Podman ve Flatpak'in baska
-registry'lerden cekebilmesi icin bilincli bir taviz.
+bir imaj makineye hic inmez. Bu garantinin **iki** ayagi var ve
+ikincisi uzun sure eksik kaldi.
+
+**1. Politika.** `policy.json` varsayilani `reject`. mfaos depolari
+`sigstoreSigned` + `mfaos.pub` ile dogrulaniyor; podman ve distrobox'in
+is gorebilmesi icin gereken yerler (Fedora, Red Hat, docker.io,
+quay.io, ghcr.io) ve yerel tasiyicilar tek tek sayilmis durumda. Yani
+varsayilan acik degil, **liste** acik. Listede olmayan bir registry'den
+cekmek reddedilir — nasil izin verilecegi KOMUTLAR.md'de.
+
+**2. Dagitimin kokeni.** bootc, kurulumda `--enforce-container-sigpolicy`
+verilmezse kokeni `ostree-unverified-registry:` yazar ve `bootc upgrade`
+imzaya **hic bakmaz**. VM'de olculdu: koken tam olarak buydu. Yani CI
+imzaliyor, anahtar makinede, `registries.d` dogru — ama yukseltme yolu
+dogrulama yapmiyordu. Imaj artik bu bayragi
+`/usr/lib/bootc/install/30-mfaos-sigpolicy.toml` ile **varsayilan**
+yapiyor, boylece yeni kurulumlar dogrulayan kokenle basliyor. Mevcut
+bir makine tek komutla duzeltilir:
+
+```bash
+sudo bootc switch --enforce-container-sigpolicy ghcr.io/mcahitkutsal/mfaos:44
+```
+
+Kurulum ortamindaki **ilk** cekme hala dogrulanmaz: canli USB'deki
+Fedora kendi politikasini kullanir, bizim anahtarimiz orada yok. Oraya
+anahtar kurmak istemiyorsan imaji elle dogrula:
+
+```bash
+cosign verify --key cosign.pub ghcr.io/mcahitkutsal/mfaos:44
+```
 
 ---
 
@@ -327,6 +353,17 @@ tek tek kontrol ediyor; kontrol sayisini betik kendisi bildiriyor.
   `kernel.yama.ptrace_scope = 1` yuzunden duser. Fedora varsayilani 0;
   bu bizim sertlestirme kararimiz. Dar kapsamli duzeltme
   (`setcap cap_sys_ptrace` wineserver'a) Flatpak icinde yapilamiyor.
+- Her onyuklemede **8-12 SELinux reddisi** gunluge dusuyor ve bu
+  beklenen: `bootupctl` yukari akim politika boslugu, `chcon`
+  reddilerinin bir kismi bootc'un **kendi** yetenek sinamasi
+  (`invalid_bootcinstall_testlabel_t` — bilerek gecersiz etiket koyup
+  cekirdegin reddetmesini olcuyor), kalani tuned. Hicbiri bir sey
+  bozmuyor (olculdu), o yuzden politika modulu yazilmadi. Risk:
+  **yeni** bir reddi bunlarin arasinda kaybolabilir — KOMUTLAR.md'de
+  bilinenleri dislayan filtre var.
+- Kurulum ortamindaki **ilk** imaj cekmesi imza dogrulamaz: canli
+  USB'deki Fedora kendi politikasini kullanir. Sonraki butun
+  yukseltmeler dogrulanir; ilk cekme icin `cosign verify` elle.
 
 ---
 

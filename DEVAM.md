@@ -261,12 +261,9 @@ adim gercek yoldan gecti: push -> CI derledi (`lint` + `mfaos` yesil)
 | SELinux | `Enforcing` |
 
 Onyuklemeden sonra 12 AVC reddi sayildi, **hicbiri bu tesisattan
-degil**: 6'si `bootupctl` (`/sysroot/.bootc-aleph.json` dosyasi
-`default_t`/`unlabeled_t` etiketli), 6'si `chcon` + `mac_admin`.
-Gunlugun tamaminda bu iki islem 340 reddinin **hepsini** olusturuyor,
-yani her onyuklemede yineliyorlar — bu imajin eskiden beri suren,
-daha once kayda gecmemis bir durumu. `run-exe`, `mfaos-exe`, `binfmt`,
-`wine` ya da `flatpak` adi gecen reddi sayisi: 0.
+degil**; `run-exe`, `mfaos-exe`, `binfmt`, `wine` ya da `flatpak` adi
+gecen reddi sayisi 0. Ucu de kaynagina kadar izlendi — ayrintisi
+"Her onyuklemede 8-12 AVC reddi" bolumunde.
 
 ### HENUZ TEST EDILMEMIS
 
@@ -881,6 +878,67 @@ mu" ile ilerlemeli. Birincisi yedegi yalnizca kagit uzerinde
 birakiyor — ve sessizce olen bir cift tiklama teshis edilemez bir
 sikayet.
 
+### Her onyuklemede 8-12 AVC reddi — ucu de beklenen, hicbiri bizim
+
+Dagitilmis imajda onyuklemeden sonra 8-12 SELinux reddisi sayiliyor.
+Gunlugun tamaminda (372 kayit) yalnizca **uc** imza var:
+
+| Sayi | Islem | Baglam | Ne |
+|---|---|---|---|
+| 192 | `bootupctl` | `bootupd_t` | yukari akim politika boslugu |
+| 128 | `chcon` | `unconfined_service_t` | bootc'un **kendi** yetenek sinamasi |
+| 52 | `chcon` | `tuned_t` | tuned'un chcon'u, `mac_admin` yok |
+
+**bootupctl.** `/sysroot/.bootc-aleph.json` ve `/boot/bootupd-state.json`
+okunamiyor. Dosya yanlis etiketli DEGIL — `matchpathcon` beklenen
+etiketi `default_t` diye veriyor, dosya da `default_t`. Eksik olan
+politikada `bootupd_t`'nin bu tipi okuma kurali. Yukari akimda ayni
+sinif kayitli: eski dosya adi `/sysroot/.aleph-version.json` icin
+[selinux-policy#2362](https://github.com/fedora-selinux/selinux-policy/issues/2362),
+`/boot`'un `boot_t` etiketi icin
+[RH 2304328](https://bugzilla.redhat.com/show_bug.cgi?id=2304328).
+Yukari akimin gecici yolu `semanage permissive --add bootupd_t` ve
+bunu kendileri de "tanilama adimi, kalici duzeltme degil" diye
+niteliyor.
+
+**chcon / unconfined_service_t — bunu aramak bosa kurek.** Belirleyici
+satir denetim gunlugunde:
+
+```
+SELINUX_ERR op=setxattr invalid_context="system_u:object_r:invalid_bootcinstall_testlabel_t:s0"
+```
+
+`invalid_bootcinstall_testlabel_t`. bootc, dosya sisteminin SELinux
+etiketlemeyi destekleyip desteklemedigini anlamak icin **bilerek
+gecersiz** bir etiket koymayi deniyor; cekirdek `mac_admin` istedigi
+icin reddediyor ve bootc bunu sinamanin cevabi olarak kullaniyor. Yani
+reddi beklenen davranis, kusur degil. Bunu bir politika modulu ile
+susturmak calisan bir sinamayi susturmak olur.
+
+**Ne YAPILMADI ve nicin.** Ne yerel politika modulu yazildi, ne
+`bootupd_t` permissive'e alindi. Uc kalem de olculdu ve hicbiri bir
+sey bozmuyor: `bootupctl status` cikis 0 ve bilesenler "At latest
+version", `bootloader-update.service` `success`, `tuned`/`tuned-ppd`
+`active`, basarisiz birim 0. Calismayan bir sey icin sertlestirmeyi
+gevsetmek yanlis takas olurdu.
+
+**Yeni bir reddiyi eskilerin arasindan nasil ayirirsin** — KOMUTLAR.md,
+"Imza politikasi" bolumunun yanindaki filtre.
+
+#### Reddiyi kime yazacagini bulmak: en ucuz yol `scontext`
+
+Bu reddilerin sahibini bulmak icin once `chcon`'un `execve`'sini
+denetime alip yeniden baslattim. Kural onyuklemede yuklendi
+(`auditctl -l` iki kural gosterdi), reddiler yine olustu, ama
+**SYSCALL kaydi sifir** cikti. Sebep: AVC iletisini cekirdek kosulsuz
+yaziyor, syscall/PROCTITLE kaydi ise auditd kurallarina bagli ve bu
+imajda syscall denetimi acik degil — yani `argv` geriye donuk
+cikarilamiyor.
+
+Cevap zaten reddinin kendi icindeydi: `scontext=system_u:system_r:tuned_t`
+baska bir seye ait olamaz. Bir sonraki sefere: once `scontext`e bak,
+`comm`e degil. `comm` yalnizca ikilinin adi, `scontext` ise onu
+baslatanin alani.
 ### Olcum araci sessizce yalan soyleyebilir — once araci sina
 
 .exe isinin sonunda uc olcum araci birbiri ardina yanlis "temiz"

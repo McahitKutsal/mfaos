@@ -318,6 +318,100 @@ sudo sysctl kernel.yama.ptrace_scope=0        # yeniden baslatinca geri doner
 Testlerimde (konsol ve GUI, 32 ve 64 bit) `ptrace_scope=1` hicbir
 sorun cikarmadi — bu yalnizca bellek okuyan uygulamalari etkiliyor.
 
+## Imza politikasi
+
+Makinenin yukseltmeyi gercekten dogruladigini gormek icin **kokene**
+bak; `policy.json`'a bakmak yetmiyor:
+
+```bash
+sudo bootc status | grep -E 'ostree-(image-signed|unverified)'
+```
+
+- `ostree-image-signed:docker://...` → yukseltme imzayi dogruluyor
+- `ostree-unverified-registry:...`   → **dogrulamiyor**, duzelt:
+
+```bash
+sudo bootc switch --enforce-container-sigpolicy ghcr.io/mcahitkutsal/mfaos:44
+sudo systemctl reboot
+```
+
+Yeni kurulumlarda bu zaten varsayilan
+(`/usr/lib/bootc/install/30-mfaos-sigpolicy.toml`).
+
+### Imzayi elle dogrula
+
+```bash
+cosign verify --key cosign.pub \
+  ghcr.io/mcahitkutsal/mfaos@sha256:<digest>
+```
+
+Digest'i `sudo bootc status` veriyor. Cikis 0 ve "signatures were
+verified against the specified public key" satiri gorunmeli.
+
+### "Source image rejected" / imaj cekilemiyor
+
+Varsayilan politika `reject`. Listede olmayan bir registry'den cekmek
+bilincli olarak reddediliyor. Kalici izin vermek icin
+`/etc/containers/policy.json`'daki `docker` tablosuna ekle:
+
+```bash
+sudo python3 - <<'PY'
+import json
+p = "/etc/containers/policy.json"
+d = json.load(open(p))
+d["transports"]["docker"]["registry.ornek.com"] = [{"type": "insecureAcceptAnything"}]
+json.dump(d, open(p, "w"), indent=2)
+PY
+```
+
+`/etc` makine durumu, yani bu degisiklik guncellemeden sonra da kalir.
+Butun filoyu ilgilendiriyorsa `files/etc/containers/policy.json`'a yaz
+ve imaji yeniden yayinla — dogru yer orasi.
+
+**Varsayilani `insecureAcceptAnything`'e geri cekme.** bootc'un
+`enforce-container-sigpolicy` bayragi varsayilanin imza sart kosmasini
+dayatiyor; geri cekersen hem kurulum reddedilir hem de `bootc switch
+--enforce-container-sigpolicy` calismaz. `verify.sh` bu gerilemeyi
+yakaliyor.
+
+## SELinux reddilerini okumak
+
+Her onyuklemede **8-12 reddi beklenen** ve ucu de kaynagina kadar
+izlendi (DEVAM.md, "Her onyuklemede 8-12 AVC reddi"): `bootupctl`
+yukari akim politika boslugu, `chcon`/`unconfined_service_t` bootc'un
+kendi yetenek sinamasi, `chcon`/`tuned_t` tuned. Hicbiri bir sey
+bozmuyor, o yuzden susturulmadi.
+
+Sorun **yeni** bir reddiyi bunlarin arasinda kaybetmek. Bilinen ucunu
+disla:
+
+```bash
+sudo grep 'avc:  denied' /var/log/audit/audit.log \
+  | grep -v -e 'comm="bootupctl".*bootupd_t' \
+            -e 'comm="chcon".*unconfined_service_t' \
+            -e 'comm="chcon".*tuned_t'
+```
+
+Cikti bossa bilinmeyen reddi yok.
+
+Yalnizca bu onyuklemeye bakmak icin:
+
+```bash
+BOOT=$(date -d "$(uptime -s)" +%s)
+sudo awk -v m="$BOOT" '/avc:  denied/ {
+  if (match($0,/audit\(([0-9]+)\./,a) && a[1]>=m) print }' /var/log/audit/audit.log
+```
+
+**`ausearch -ts "<tarih>"` kullanma.** Verdigin bicimi reddedip
+"Invalid start time" diyor ve hata bir boruya akarsa sonuc sifir
+gorunur — yani olcum sessizce yalan soyler. Ya `-ts recent`/`-ts today`
+ya da yukaridaki awk.
+
+Reddi kime ait? **`scontext`e bak, `comm`e degil.** `comm` yalnizca
+ikilinin adi; `scontext` onu baslatanin SELinux alani, yani gercek
+sahibi. Bu imajda syscall denetimi kapali oldugu icin `argv`/PROCTITLE
+geriye donuk cikarilamiyor — `scontext` en ucuz ve en kesin yol.
+
 ## Logolari yeniden uret
 
 Sadece logo kaynagi degistiginde gerekiyor; cikti depoya commit ediliyor.
