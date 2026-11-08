@@ -19,7 +19,9 @@ Son guncelleme: 7 Kasim 2026
 | 1 — imaj derlemesi | Tamam |
 | 2 — icerik dogrulama (`verify.sh`) | Tamam |
 | 3 — QEMU'da boot | Tamam |
-| CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Dogrulama adimi yeni, CI'da denenmedi |
+| 4 — guncelleme ve OTOMATIK geri donus | **Tamam — VM'de olculdu** |
+| CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Tamam |
+| Imza zincirinin makine tarafi | Tamam — VM ghcr imajini `policy.json` altinda dogruladi |
 
 Imaj GNOME masaustu olarak aciliyor, kendini `MFAOS 0.1` diye
 tanitiyor, aygit adi `MFAOS` (hostname `mfaos`), Turkce arayuz ve
@@ -35,34 +37,51 @@ slayt cizimleri logo degil (bak: 4. bolumdeki tuzaklar). Sayilar
 Fedora 44'teki `fedora-logos-42.0.1-3` icin; paket surumu degisirse
 `verify.sh` "sadece N logo degismis" diye uyarir.
 
-### HENUZ TEST EDILMEMIS — en onemli eksik
+### Katman 4 nasil olculdu
 
-**Katman 4: guncelleme ve geri alma.** Mimarinin butun vaadi bu ve hala
-bir kez bile denenmedi. Otomatik geri donus *kurulu* (greenboot,
-`build_files/25-rollback.sh`) ve `verify.sh` kurulumun dogrulugunu
-onayliyor — ama kurulu olmasi calistigi anlamina gelmiyor. Test araci
-artik hazir (`rollback-test.sh`, bkz. Adim 2); eksik olan tek sey onu
-VM'de kosturmak.
+Zincirin tamami VM'de, mudahalesiz kosturuldu. Kanit satirlari:
 
-**Katman 5: gercek donanim.** Hicbir fiziksel makineye kurulmadi.
+- Stage aninda tetikleyici kuruluyor: `Setting rollback trigger for
+  deployment: sha256:...` -> `Set grubenv:
+  greenboot_next_deployment_id=sha256:...` -> `Set grubenv: fallback=1`
+- Ilk basarisizlikta sayac kuruluyor: `boot_counter does not exists` ->
+  `Set grubenv: boot_counter=3`
+- Her denemede iniyor: `Boot counter is 2, rebooting to try again`,
+  sonra `Boot counter is 1, ...`
+- Tukenince geri donuyor: `Boot counter exhausted and
+  next-deployment-id is set - initiating rollback`
+- Besinci acilis yesil; acilan deployment `arm` oncesindeki, bozuk
+  deployment `(rollback)` yuvasinda.
 
-**Imza zincirinin makine tarafi.** CI imzaliyor, ama hicbir makine
-henuz bir imzayi dogrulamadi. `policy.json`'un gercekten ise yarayip
-yaramadigini bilmiyoruz.
+**Zincirin sinirini bilmek lazim:** geri donusu GRUB degil greenboot
+yapiyor, yani kullanici alaninda. Bozuk deployment'in greenboot'u
+kosturacak kadar acilmasi gerekiyor. Hic acilmayan bir deployment
+(bozuk cekirdek, kirik initramfs) bu zincirle KURTARILMIYOR; o durumda
+GRUB menusunden elle onceki girdiyi secmek gerekiyor. "Bozuk guncelleme
+kendini geri alir" vaadi bu kadariyla dogru.
 
-**Bu oturumda eklenenlerin hicbiri derlenmedi.** greenboot adimi,
-`verify.sh`'in yeni kontrolleri, CI'in dogrulama adimi, lint isi ve
-yeniden yazilan `60-logos.sh` yerelde bir kez bile calismadi. Sirada
-ilk is: `./test.sh all`. Kirilabilecek yerler:
+**Testin kendi tuzagi:** kasitli basarisiz kontrolun kendini kapatma
+esigi `GREENBOOT_MAX_BOOT_ATTEMPTS`'ten BIR FAZLA olmak zorunda. Ikisi
+de 3 oldugunda test hic geri donus uretmiyor: sayac 3 -> 2 -> 1 diye
+iniyor, dorduncu acilista kontrol kendini kapatiyor, greenboot sistemi
+saglikli goruyor, sayaci temizliyor ve bozuk deployment'i iyi olarak
+muhurluyor. Ilk olcumde tam bu oldu ve sonuc "geri donus yok" cikti —
+isletim sisteminde degil, testte hata vardi. `rollback-test.sh` esigi
+artik greenboot'un kendi ayarindan turetiyor.
 
-- `greenboot` paket adi Fedora 44 deposunda bulunmayabilir; o zaman
-  `25-rollback.sh` kasitli olarak patlar.
-- Lint isi mevcut scriptlerde birikmis shellcheck uyarilarini bulabilir.
-  Imaji etkilemez, sadece CI'i kirmizi yapar.
-- `60-logos.sh` artik PNG basligini `od` ile kendisi okuyor; python3
-  bagimliligi kalkti. Filtre ve geometri mantigi gercek fedora-logos
-  dosya listesine karsi yerelde test edildi (81 degisti / 62 korundu),
-  ama imajin icinde bir kez bile kosmadi.
+### HENUZ TEST EDILMEMIS
+
+**Katman 5: gercek donanim.** Hicbir fiziksel makineye kurulmadi. En
+buyuk eksik artik bu.
+
+**`mfaos-hostname.service` imajda kosmadi.** Bu oturumda eklendi; VM'de
+dogrulanan sey sorunun KENDISI (kabukta ad `fedora` kaliyor), cozumu
+degil. Yeni imaj acildiginda beklenen: `hostnamectl`'de `Static
+hostname: (unset)` ama adin `mfaos` olmasi.
+
+**`verify.sh`'in bu oturumda eklenen kontrolleri imajda kosmadi:**
+yapilandirma dosyalarinin calistirma biti ve `mfaos-hostname.service`
+kontrolleri. Sirada ilk is `./test.sh boot`.
 
 ---
 
@@ -82,11 +101,11 @@ Dogrulama (kimlik dogrulamasi olmadan calismali):
 podman pull ghcr.io/mcahitkutsal/mfaos:44
 ```
 
-### Adim 2 — Katman 4: guncelleme ve geri alma testi
+### Adim 2 (TAMAMLANDI) — Katman 4: guncelleme ve geri alma testi
 
-Projenin en kritik eksik testi. Araclar artik hazir: `rollback-test.sh`
-VM'in icinde kosup zincirin durumunu raporluyor. Komut dizisi
-`KOMUTLAR.md`'de; burada **neden** oyle oldugu.
+Olculdu ve gecti; kanit satirlari icin bkz. "Katman 4 nasil olculdu".
+Komut dizisi `KOMUTLAR.md`'de. Burada kalan sey **neden** oyle
+kurguladigimiz — testi tekrar kosturacak kisi icin.
 
 **Sifir numarali adim atlanamaz.** VM yerelde derlenmis imajdan
 kuruldugu icin bootc'nin kayitli guncelleme kaynagi `localhost/mfaos:44`
@@ -97,9 +116,13 @@ gerekiyor, ve o komut ayni zamanda imza zincirinin ilk gercek sinavi:
 
 **Iki ayri sey test ediliyor, karistirmamak lazim.** `bootc rollback`
 **elle** geri donus; greenboot ise **otomatik** geri donus. Ilki
-calisiyor diye ikincisi calisiyor sanma — ikincisi GRUB'un
-`boot_counter` degiskenini KALICI yazabilmesine bagli ve bunu ancak
-acilmis sistemde gorebiliyorsun (`rollback-test.sh status`, 3. bolum).
+calisiyor diye ikincisi calisiyor sanma.
+
+Otomatiginin nasil isledigi olculdu: sayaci grubenv'e yazan ve tukenince
+geri donusu BASLATAN taraf greenboot, GRUB degil. Yani geri donus
+kullanici alaninda oluyor ve bozuk deployment'in greenboot'u
+kosturacak kadar acilmasi gerekiyor (bkz. "Katman 4 nasil olculdu",
+zincirin siniri).
 
 **Bozuk imaj YAYINLAMIYORUZ.** Ilk plan bilerek bozuk bir imaj uretip
 push etmekti; gerekmiyor. greenboot ozel kontrolleri
@@ -118,6 +141,10 @@ dosya var. Kendini kapatmasa makine saglikli bir acilisa hic ulasmaz ve
 kendi VM'ini kilitlersin. Sayac `/var`'da duruyor cunku `/var`
 deployment'lar arasinda PAYLASILIYOR: geri donusten sonra da ayni sayac
 okunuyor ve kontrol kendini kapatabiliyor.
+
+Ama esik `GREENBOOT_MAX_BOOT_ATTEMPTS`'ten BIR FAZLA olmak zorunda,
+yoksa test hicbir sey olcmez. Ayrintisi "Katman 4 nasil olculdu"
+bolumunde; ilk olcumde tam bu yuzden yanlis sonuc aldik.
 
 `verify.sh` o kontrolun imaja sizmadigini ayrica dogruluyor — `files/`
 altina commit edilirse her makine her acilista geri donerdi.
@@ -393,6 +420,85 @@ bir action, o branch'i kontrol eden herkese imzalama anahtarini
 okuma imkani verir — zincirin en zayif halkasi imzalama adimi degil,
 ayni iste calisan ucuncu parti kod.
 
+**`/etc` deployment basina ayri; `sshd` ve guvenlik duvari kurali geri
+donusle birlikte GELMIYOR.** Katman 4 testinde iki kez buna takildik.
+Test VM'inde `sudo systemctl enable --now sshd` ve
+`firewall-cmd --add-service=ssh` yapiyorsun, sonra sistem baska bir
+deployment'a geciyor ve ssh olmuyor — cunku o deployment'in `/etc`'si sen bu degisikligi
+yapmadan once olusmus. `/var` ve `/home` paylasiliyor, `/etc`
+paylasilmiyor. Pratik sonucu: betikleri `/home/test`'e koy (her
+deployment'ta elinin altinda olur), ama ssh erisimini her yeni
+deployment'ta yeniden acmayi bekle.
+
+**ostree yalnizca IKI deployment tutuyor.** `bootc switch` yeni birini
+eklerken en eskiyi buduyor. "Bir sey ters giderse ucuncu bir yedegim
+var" diye dusunmek yanlis: GRUB menusunde iki satir goruyorsun, hepsi
+o. Test ederken bunu hesaba kat.
+
+**`/boot` salt okunur bagli.** `grub2-editenv ... set` sessizce
+basarisiz oluyor (cikis 1, hata mesaji yok denecek kadar sessiz).
+greenboot bunu kendisi hallediyor — gunlugunde `Initial /boot mount
+state: ro` → `Remounting /boot as rw for operation` → `Restoring /boot
+mount to ro` satirlari var. Elle mudahale ederken ayni sirayi izle:
+`sudo mount -o remount,rw /boot`, degistir, `sudo mount -o remount,ro
+/boot`.
+
+**Yapilandirma dosyasina calistirma biti kacarsa systemd her acilista
+uyariyor.** `Configuration file ... is marked executable. Please remove
+executable permission bits. Proceeding anyway.` Simdilik devam ediyor,
+ama uyari bosa dusmuyor. Windows'ta `core.filemode=false` oldugu icin
+calisma agacindaki kip izlenmiyor ve bit fark edilmeden
+commit'lenebiliyor — bizde sekiz dosyada oyle olmus. Duzeltmesi calisma agacinda
+`chmod` degil, dogrudan indeks: `git update-index --chmod=-x <dosya>`.
+`verify.sh` artik bunu kontrol ediyor, ama yalnizca bizim sahibi
+oldugumuz yollarda.
+
+**Cekirdek komut satirinda `console=ttyS0` zaten var; bunu kullan.**
+QEMU'yu `-serial file:output/serial.log` ile baslatinca butun acilis
+gunlugu host'ta dosya olarak birikiyor. Bu, acilis **gunluk diske hic
+yazilmadan** takildiginda tek okunabilir kaynak: bir kosuda iki acilis
+erkenden takildi, `journalctl -b -1` o acilislar icin bos dondu ve
+QEMU penceresine bakmaktan baska yol kalmadi. `MFAOS_HEADLESS=1
+./test.sh vm` penceresiz baslatir, test tamamen mudahalesiz koser.
+
+**`ostree=` yolundaki ozet deployment'i DEGIL, cekirdek+initramfs'i
+tekilestiriyor.** `journalctl -b -2 -k -o cat | grep -o 'ostree=[^ ]*'`
+gecmis bir acilisi anlamak icin ise yariyor, ama yalnizca iki
+deployment'in cekirdegi farkliysa. Ayni cekirdekten uretilmis iki
+deployment ayni ozeti tasiyor: olculdu — basarili bir geri donus
+turunda bes acilis da ayni degeri gosterdi, sanki hicbir sey
+degismemis gibi. Ilk okumada bunu deployment kimligi sanip "GRUB
+yedege gecmiyor" diye yanlis bir sonuca varmistim.
+
+"Geri donus oldu mu" sorusunu kesin yanitlayan iki kaynak var:
+`rollback-test.sh`'in `arm` aninda kaydettigi `MFAOS_BUILD_DATE`
+karsilastirmasi, ve greenboot'un kendi satiri — `Boot counter exhausted
+and next-deployment-id is set - initiating rollback`.
+
+**Makine adini initramfs'in systemd'si koyuyor; os-release'deki
+`DEFAULT_HOSTNAME` tek basina yetmiyor.** Olculen satirlar, monotonic
+2.23'te, `initrd-*.target`'lardan hemen once:
+
+    systemd[1]: No hostname configured, using default hostname.
+    systemd[1]: Hostname set to <fedora>.
+
+initramfs temel imajdan geliyor, yani markalama adimindan once
+uretilmis ve icindeki os-release'de bu alan yok. Gercek kokun systemd'si
+"ad zaten ayarli" diye uzerine yazmiyor, sonuc: Ayarlar'da aygit adi
+dogru (`PRETTY_HOSTNAME`), kabukta ve agda ad `fedora` kaliyor.
+Cekirdek argumani yolu da kapali — `systemd.hostname` dizgisi systemd
+259 ikilisinde hic bulunmuyor. Cozum `mfaos-hostname.service`: statik
+ad yoksa acilista bir kez adi `DEFAULT_HOSTNAME`'e cekiyor. Statik ad
+varsa (`/etc/hostname`, kullanici Ayarlar'dan degistirdiyse olusuyor)
+unit `ConditionPathExists=!` ile hic kosmuyor.
+
+**Host askiya alinirsa misafirin saati bozuluyor ve acilis takiliyor.**
+Takilan acilislarin son kernel satiri `clocksource: Watchdog remote CPU
+N read timed out`. Katman 4 testi uc-dort yeniden baslatma demek;
+laptop arada uyursa test yarida kaliyor ve sonuc okunamiyor — bizde tam
+olarak bu oldu, 21:08'de takildi 05:47'ye kadar oyle kaldi. Testi
+baslatmadan once makinenin uyumayacagindan emin ol.
+
 ---
 
 ## 5. Bakim — projeyi bitiren sey bu
@@ -434,6 +540,8 @@ build_files/70-locale.sh     Turkce dil ve klavye
 build_files/80-gnome.sh      GNOME bagis istekleri (bildirim + About kutucugu)
 files/                      imajin kok dizinine oldugu gibi kopyalanir
 files/usr/lib/greenboot/    saglik kontrolleri (required.d = geri donus tetikler)
+files/usr/lib/systemd/      birimler ve drop-in'ler (mfaos-hostname.service dahil)
+files/usr/libexec/mfaos/    imajin kendi yardimci betikleri
 logo/                       logo kaynaklari (imaja girmez)
 add-logo.sh                 logo boyutlarini uretir (WHITE= ile beyaz varyant)
 preflight.sh                gelistirme ortami kontrolu

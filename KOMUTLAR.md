@@ -180,13 +180,33 @@ sudo bootc rollback && sudo systemctl reboot
 ### 4. OTOMATIK geri donus — asil test
 
 Ikisi ayri sey: elle geri donus calisiyor diye otomatigi calisiyor
-sanma. Otomatik olan GRUB'un `boot_counter`'i kalici yazmasina bagli.
+sanma.
+
+> **Baslamadan:** bu test uc-dort yeniden baslatma demek. Laptop arada
+> uyursa misafirin saat kaynagi bozuluyor, acilis `clocksource: Watchdog
+> remote CPU N read timed out` satirinda takiliyor ve test yarida
+> kaliyor. Makinenin uyumayacagindan emin ol.
+
+Penceresiz kosturmak daha rahat: butun acilis gunlugu host'ta birikir,
+VM ssh'a hic gelmese bile okunabilir.
 
 ```bash
-sudo ./rollback-test.sh arm      # kasitli basarisiz saglik kontrolu
-sudo bootc upgrade
+MFAOS_HEADLESS=1 ./test.sh vm        # WSL'de
+tail -f output/serial.log            # baska bir terminalde
+```
+
+VM'in icinde, bu sirayla — sira onemli, `arm` artik bunu zorluyor:
+
+```bash
+sudo ./rollback-test.sh arm          # kasitli basarisiz saglik kontrolu
+sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44
+sudo bootc status                    # 'staged' DOLU olmali
 sudo systemctl reboot
 ```
+
+`upgrade` degil `switch`: guncelleme kaynagi `localhost/mfaos:44`
+kaldiysa `bootc upgrade` hicbir sey stage etmiyor, tetikleyici hic
+kurulmuyor ve test sessizce bos koser.
 
 Beklenen: yeni deployment 3 kez acilmayi dener, her denemede
 `boot_counter` iner, sifira varinca **onceki deployment** acilir.
@@ -197,9 +217,22 @@ sudo ./rollback-test.sh status
 sudo ./rollback-test.sh disarm
 ```
 
-Kontrol 3 basarisizliktan sonra kendini kapatiyor, yani VM saglikli
-bir acilisa mutlaka ulasiyor — kilitlenme yok. `disarm` yine de
-gerekli: sayac `/var`'da duruyor.
+`status` hukmu kendisi veriyor: `arm` aninda hangi imajda oldugunu
+kaydediyor ve acilista onunla karsilastiriyor. "Sonunda acildi" olcu
+degil — kontrol 3 basarisizliktan sonra kendini kapattigi icin geri
+donus olsa da olmasa da sistem sonunda aciliyor.
+
+Hangi acilisin hangi deployment'ta oldugunu kesin gormek icin:
+
+```bash
+for b in -4 -3 -2 -1 0; do
+    echo "$b: $(sudo journalctl -b $b -k -o cat | grep -m1 -o 'ostree=[^ ]*')"
+done
+```
+
+Kontrol kendini kapattigi icin VM kilitlenmiyor. `disarm` yine de
+gerekli: sayac `/var`'da duruyor ve `/var` deployment'lar arasinda
+paylasiliyor.
 
 ---
 
@@ -235,6 +268,11 @@ derleme bunu `UYARI` olarak yazar ama durmaz.
 | `-ash: ssh: not found`, prompt `MSI:~#` | Docker Desktop'in WSL distrosundasin, Ubuntu degil: `wsl -d Ubuntu` |
 | `ssh -p 2222` cevap vermiyor, asili kaliyor | VM acik ama icinde `sshd` kapali. QEMU baglantiyi kabul edip misafire ulasamadigi icin REDDETMIYOR, asiyor. QEMU penceresinden gir ve `sudo systemctl enable --now sshd` |
 | `ssh -p 2222` → `Connection refused` | VM hic calismiyor: `./test.sh boot` |
+| `grub2-editenv ... set` sessizce basarisiz (cikis 1, mesaj yok) | `/boot` salt okunur bagli: `sudo mount -o remount,rw /boot`, degistir, `sudo mount -o remount,ro /boot` |
+| ssh gelmiyor ve acilis takilmis gorunuyor | `output/serial.log`'a bak — gunluk diske yazilmadan takilan acilislarin tek kaynagi o. QEMU'yu `-serial` olmadan baslattiysan bu dosya yok |
+| GRUB'da yalnizca iki `MFAOS 0.1 (ostree:N)` satiri var | Normal: ostree iki deployment tutuyor, `bootc switch` en eskiyi buduyor |
+| Geri donusten/gecisten sonra ssh yok | `/etc` deployment basina ayri. Yeni deployment'ta tekrar: `sudo systemctl enable --now sshd` ve `sudo firewall-cmd --permanent --add-service=ssh && sudo firewall-cmd --reload` |
+| `arm` "bekleyen bir geri donus var" diyor | Dogru davranis: ustte bekleyen gecis varken test hukum vermez. `sudo bootc rollback && sudo systemctl reboot`, sonra tekrar `arm` |
 
 ---
 
