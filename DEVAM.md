@@ -21,7 +21,7 @@ Son guncelleme: 8 Kasim 2026
 | 3 — QEMU'da boot | Tamam |
 | 4 — guncelleme ve OTOMATIK geri donus | **Tamam — VM'de olculdu** |
 | CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Tamam |
-| Imza zincirinin makine tarafi | Tamam — VM ghcr imajini `policy.json` altinda dogruladi |
+| Imza zincirinin makine tarafi | Tamam — yukseltme kokeni `ostree-image-signed`, olumlu VE olumsuz sinandi |
 | Windows uygulamalari (.exe) | Tamam — CI'dan cikan dagitilmis imajda uctan uca olculdu |
 
 Imaj GNOME masaustu olarak aciliyor, kendini `MFAOS 0.1` diye
@@ -264,6 +264,66 @@ Onyuklemeden sonra 12 AVC reddi sayildi, **hicbiri bu tesisattan
 degil**; `run-exe`, `mfaos-exe`, `binfmt`, `wine` ya da `flatpak` adi
 gecen reddi sayisi 0. Ucu de kaynagina kadar izlendi — ayrintisi
 "Her onyuklemede 8-12 AVC reddi" bolumunde.
+
+### Imza dogrulamasi nasil gercekten acildi
+
+Zincir kagit uzerinde tamdi: CI cosign ile imzaliyor, ortak anahtar
+imajda, `registries.d` sigstore eklentilerini aciyor, `policy.json`
+mfaos depolari icin `sigstoreSigned` diyor. README de "imza
+dogrulanmazsa DUR" yaziyordu. **Yukseltme yolu yine de dogrulama
+yapmiyordu.**
+
+Eksik halka dagitimin kokeniydi:
+
+```
+container-image-reference=ostree-unverified-registry:ghcr.io/mcahitkutsal/mfaos:44
+```
+
+bootc bu kokende imzaya **hic** bakmiyor. `policy.json`'a bakip "imza
+zorunlu" gormek yetmiyor, cunku politikaya hic basvurulmuyor.
+
+Duzeltme iki parcali olmak zorundaydi; nedeni kilavuzda birebir yazili:
+`--enforce-container-sigpolicy` "enforces that containers-policy.json
+includes a **default** policy which requires signatures" ve kurulum
+yapilandirmasi icin "image pulls will be rejected if the policy file
+specifies insecureAcceptAnything as the default". Eski varsayilan tam
+olarak `insecureAcceptAnything` oldugu icin bayrak **oldugu gibi
+reddedilirdi**.
+
+1. `policy.json` varsayilani `reject`. Gereken defterler olcumle
+   secildi: `registry.fedoraproject.org` (distrobox/toolbox varsayilan
+   imaji), `registries.conf`'un `unqualified-search-registries` ucu,
+   `quay.io`, `ghcr.io`, `registry.redhat.io`. **Yerel tasiyicilar da
+   acildi** (`containers-storage`, `docker-daemon`, `dir`, `oci`,
+   `oci-archive`, `docker-archive`) — bu atlanirsa varsayilan reddetme
+   `podman run`'in kendi depolamasindaki imaji bile reddeder.
+2. `files/usr/lib/bootc/install/30-mfaos-sigpolicy.toml` ile
+   `enforce-container-sigpolicy = true`, yani **yeni kurulumlar**
+   dogrulayan kokenle basliyor, elle bayrak gerekmiyor.
+
+**VM'de olculen** (dagitilmis imaj, `sha256:4ed799ac`):
+
+| Sinama | Sonuc |
+|---|---|
+| `bootc switch --enforce-container-sigpolicy` | cikis 0, koken `ostree-image-signed:docker://...` |
+| dogru anahtarla `bootc upgrade --check` | cikis 0 |
+| **yanlis** (gecerli ama baska) anahtarla `--check` | cikis 1, `cryptographic signature verification failed` |
+| **yanlis** anahtarla gercek `bootc upgrade` | cikis 1, `invalid signature when validating ASN.1 encoded signature` |
+| anahtar geri konunca `--check` | cikis 0 |
+| izinli defterden `podman pull` | cikis 0 |
+| yerel depodan `podman run` | calisti |
+| izinsiz defterden `podman pull` | cikis 125, `rejected by policy` |
+| `.exe` gerilemesi | `Microsoft Windows 10.0.19045` |
+| greenboot / basarisiz birim | `success` / 0 |
+
+Olumsuz sinama olmadan "dogruluyor" iddiasi yine olculmemis kalirdi:
+dogru anahtarla gecen bir yukseltme, imzaya **hic bakmayan** bir
+sistemde de gecer. Ayirt eden tek sey yanlis anahtarla reddedilmesi.
+
+**Kalan sinir.** Kurulum ortamindaki **ilk** cekme dogrulanmiyor: canli
+USB'deki Fedora kendi politikasini kullanir, bizim anahtarimiz orada
+yok. Imaji oraya cekmeden once `cosign verify --key cosign.pub ...`
+calistirmak gerekiyor; README'de yazili.
 
 ### HENUZ TEST EDILMEMIS
 

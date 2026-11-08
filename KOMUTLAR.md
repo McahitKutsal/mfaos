@@ -348,6 +348,30 @@ cosign verify --key cosign.pub \
 Digest'i `sudo bootc status` veriyor. Cikis 0 ve "signatures were
 verified against the specified public key" satiri gorunmeli.
 
+### Dogrulamanin GERCEKTEN calistigini kanitla
+
+Dogru anahtarla gecen bir yukseltme, imzaya hic bakmayan bir sistemde
+de gecer. Ayirt eden tek sinama **yanlis** anahtarla reddedilmesi:
+
+```bash
+# gecerli ama BASKA bir anahtar uret (host'ta)
+cosign generate-key-pair          # cosign.pub -> makineye kopyala
+
+# makinede: anahtari yedekle, yanlisini koy
+sudo cp -a /etc/pki/containers/mfaos.pub /etc/pki/containers/mfaos.pub.yedek
+sudo install -m 0644 yanlis.pub /etc/pki/containers/mfaos.pub
+
+sudo bootc upgrade --check        # cikis 1 OLMALI:
+# cryptographic signature verification failed: invalid signature ...
+
+# anahtari geri koy ve tekrar dogrula
+sudo mv /etc/pki/containers/mfaos.pub.yedek /etc/pki/containers/mfaos.pub
+sudo bootc upgrade --check        # cikis 0 OLMALI
+```
+
+Yanlis anahtarla cikis **0** aliyorsan dogrulama kapali — kokeni
+kontrol et (yukari bak).
+
 ### "Source image rejected" / imaj cekilemiyor
 
 Varsayilan politika `reject`. Listede olmayan bir registry'den cekmek
