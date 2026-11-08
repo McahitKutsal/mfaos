@@ -183,7 +183,36 @@ binfmt yolunun imajda zaten kanitli altyapisi vardi: `systemd-binfmt`
 | `./test.exe` (binfmt, XDG disi klasor) | `Microsoft Windows 10.0.19045`, cikis 0 |
 | goreli yol + bosluklu dizin adi | gecti |
 | ptrace reddi | 0 |
+
+Sonra tesisatin **kendisi** imaj yollarina kurulup butun zincir tek
+parca olarak olculdu (`/usr` gecici overlay, dosyalar gercek
+yerlerinde, SELinux baglamlari `restorecon` ile):
+
+| Test | Sonuc |
+|---|---|
+| `systemd-binfmt` yeniden kosturuldu (onyuklemedeki yolun ayni kodu) | birim `success`, cikis 0 |
+| `mfaos-exe` kaydi | `enabled`, `magic 4d5a`, `flags:` bos, yorumlayici dogru |
+| taban imajin `qemu-aarch64` kaydi | bozulmadi — iki bicim bir arada |
+| MIME varsayilani (kullanici yapilandirmasi YOK) | dort tipin dordunde de `mfaos-exe.desktop`; tek "onerilen" uygulama o |
+| `./surum.exe /c ver` (binfmt, bosluklu dizin) | `Microsoft Windows 10.0.19045`, cikis 0, **3 saniye** |
+| `mfaos-exe <yol> /c echo ...` | cikti dondu, cikis 0 |
+| **`gio open dosya.exe`** — Dosyalar'da cift tiklamanin ayni cagrisi | `not.exe` Windows surec tablosunda (PID 212/220) |
+| calistirma biti olmayan `.exe` | cikis 126, "Erisim engellendi" — binfmt devreye girmiyor |
+| motor kurulu degilken mesaj | tam kurulum metni + cikis 127 |
 | SELinux AVC reddi | 0 |
+
+`gio open` sonucu neden kesin: `org.winehq.Wine` izinleri yalnizca
+`xdg-documents;xdg-desktop;xdg-pictures;xdg-music;xdg-videos;xdg-download`
+(olculdu, kullanici gecersiz kilmasi da yok) ve sinama dosyasi bu
+dizinlerin **hicbirinde degil**. `--filesystem` verilmeden ayni dosya
+kum havuzunun icinden okunamiyor — ayrica olculdu. Dosya yine de
+yuklendigine gore izni veren sarmalayici; yani zincir bastan sona
+yurudu: cift tiklama -> `mfaos-exe.desktop` -> `run-exe.sh` ->
+`flatpak run --filesystem=<dizin>` -> PE calisti.
+
+AVC sayisi once **aracin kendisi dogrulanarak** alindi: ayni sorgu
+gunlukteki 324 eski reddiyi buluyor, damgadan sonrasinda 0 buluyor.
+Bu onlem bosuna degil — nedeni asagidaki tuzak bolumunde.
 
 GUI testinde bir yanlis olumsuz yasandi: `pgrep -f notepad.exe`
 host'tan BOS donuyor, cunku flatpak PID ad alani kullaniyor. "Calismadi"
@@ -822,6 +851,66 @@ Genel ders: bir yedek zinciri "arac kurulu mu" ile degil "is oldu
 mu" ile ilerlemeli. Birincisi yedegi yalnizca kagit uzerinde
 birakiyor — ve sessizce olen bir cift tiklama teshis edilemez bir
 sikayet.
+
+### Olcum araci sessizce yalan soyleyebilir — once araci sina
+
+.exe isinin sonunda uc olcum araci birbiri ardina yanlis "temiz"
+raporu verdi. Ucu de ayni sinifta: **hata veriyor ama sonuc sifir
+gibi gorunuyor.**
+
+**1. `ausearch -ts` tarih bicimini reddetti.** Soyle sayiyordum:
+
+```bash
+ausearch -m AVC -ts "11/08/2026 14:48:44" | grep -c 'type=AVC'   # -> 0
+```
+
+Sifir "reddi yok" demek sanildi. Gercekte ausearch hic aramadi:
+
+```
+Invalid start time (11/08/2026 14:48:44). Hour, Minute, and Second are ...
+```
+
+Hata `grep -c`'nin icine aktigi ve cikis kodu boru yuzunden kayboldugu
+icin gorunmedi. Dogru olcum: logu dogrudan okuyup zaman damgasini
+kendin suzmek —
+
+```bash
+MARK=$(date +%s)
+sudo awk -v m="$MARK" '/avc:  denied/ { if (match($0,/audit\(([0-9]+)\./,a) && a[1]>=m) n++ } END{print n+0}' \
+     /var/log/audit/audit.log
+```
+
+ve **once aracin bir sey bulabildigini kanitlamak**: ayni sorgu
+gunlukteki 324 eski reddiyi buluyor. Hicbir seyi bulamayan bir sorgu
+her zaman "temiz" rapor eder.
+
+**2. Denetim dosya izi ostree `/usr` overlay'inde tutmuyor.**
+
+```bash
+auditctl -w /usr/libexec/mfaos/run-exe.sh -p x -k mfaosexe
+```
+
+Kural listede gorunuyor, betik gercekten calisiyor (cikis 0, Windows
+surumu basildi), ama `ausearch -k mfaosexe` **sifir** kayit veriyor.
+Inode tabanli izler overlayfs ile guvenilir degil. Burada dogru kanit
+sonucun kendisiydi: Windows surec tablosu ve kum havuzunun gormedigi
+yoldan dosyanin yuklenmis olmasi.
+
+**3. `$(gio open ...)` asiliyor.** Komut ikamesi borunun BUTUN
+yazicilari kapanana kadar bekler; `gio open` baslattigi uygulamaya
+stderr'i miras verdigi icin boru, **uygulama** yasadigi surece acik
+kalir. Yani `go="$(gio open app.exe)"` notepad kapanana kadar durur —
+`timeout 20` bile kurtarmaz, cunku zaman asimi gio'yu olduruyor,
+boruyu tutan notepad'i degil. Ayni tuzak `wineserver -w` icin de
+gecerli. Dogrusu:
+
+```bash
+setsid timeout 25 gio open "$f" >/tmp/go.out 2>&1 </dev/null &
+```
+
+Ortak ders: bir olcum "0" dedigi anda, o aracin **bir seyi bulabildigi
+durumu** da gostermek gerekiyor. Yoksa olculen sey sessizlik olur,
+yoklugun kaniti degil.
 
 ### /mnt/c uzerinden derlemek dosya kiplerini 777 yapiyor
 
