@@ -792,13 +792,36 @@ mesaji "dosya yok" olur, sebebini soylemez. `run-exe.sh` once
 `readlink -f` ile mutlaklastiriyor, sonra `--filesystem=<dizin>`
 veriyor — butun diski degil, yalnizca `.exe`'nin dizinini.
 
-### zenity bu imajda yok
+### zenity yok — ve "program kurulu" mesajin ulastigi anlamina gelmiyor
 
 Masaustu mesaji icin reflex olarak `zenity` yazilir ama Silverblue 44
 tabaninda **yok**. Olculdu — var olanlar: `notify-send` ve `gdbus`.
-`run-exe.sh` once tty'ye bakiyor, tty yoksa `notify-send`, o da yoksa
-`logger` kullaniyor: cift tiklamanin sessizce olmesi teshis edilemez
-bir sikayet olur.
+
+`run-exe.sh`'in ilk yazimi su zinciri kurdu: tty varsa stderr, yoksa
+`notify-send`, o da yoksa `logger`. VM'de kosturulunca motor-yok
+mesaji **hic gorunmedi**:
+
+```
+Failed to show notification: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+```
+
+Kusur zincirin kendisindeydi. Ortadaki adim `command -v notify-send`
+ile programin VAR OLUP OLMADIGINA bakiyordu; ama program var olup
+calisma aninda **dusebiliyor** — oturum veriyolu ya da bildirim
+servisi yoksa tam olarak bu oluyor. `|| true` hatayi yutuyor,
+`logger` yedegine ise hic gecilmiyor, cunku `notify-send` "var".
+Yedegi olan bir zincir yedegine ulasamiyordu.
+
+Duzeltme: bildirimin **cikis kodu** denetleniyor, ayrica stderr'e her
+durumda yaziliyor (Dosyalar'dan gelindiginde /dev/null'a gider,
+zarari yok). Duzeltmeden sonraki olcum: terminalde tam metin
+goruldu, tty'siz cagrida ayni metin `journalctl -t mfaos-exe`
+altinda cikti.
+
+Genel ders: bir yedek zinciri "arac kurulu mu" ile degil "is oldu
+mu" ile ilerlemeli. Birincisi yedegi yalnizca kagit uzerinde
+birakiyor — ve sessizce olen bir cift tiklama teshis edilemez bir
+sikayet.
 
 ### /mnt/c uzerinden derlemek dosya kiplerini 777 yapiyor
 

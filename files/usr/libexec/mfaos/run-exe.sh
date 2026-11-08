@@ -22,18 +22,31 @@ BOTTLES_APP="com.usebottles.bottles"
 
 # Mesaji NEREYE yazacagimiz cagiranla degisiyor: terminalden gelince
 # stderr dogru yer, Dosyalar'dan cift tiklamayla gelince kimse stderr'i
-# gormuyor. zenity bu imajda YOK (olculdu), notify-send var.
+# gormuyor. zenity bu imajda YOK (olculdu), notify-send var — ama
+# "var olmasi" mesajin ulastigi anlamina gelmiyor, asagiya bak.
 tell() {
     local title="$1" body="$2"
+
+    # stderr'e HER ZAMAN yaziyoruz: terminalden gelindiyse kullanici
+    # mesaji burada okur, Dosyalar'dan gelindiyse /dev/null'a gider ve
+    # zarari olmaz.
+    printf '%s\n%s\n' "${title}" "${body}" >&2
     if [[ -t 2 ]]; then
-        printf '%s\n%s\n' "${title}" "${body}" >&2
-    elif command -v notify-send >/dev/null 2>&1; then
-        notify-send -a "MFAOS" -i mfaos -- "${title}" "${body}" || true
-    else
-        # Son care. Kullanici hicbir sey gormezse sebebi gunlukte kalsin;
-        # sessizce olen bir cift tiklama teshis edilemez bir sikayettir.
-        logger -t mfaos-exe -- "${title}: ${body}" 2>/dev/null || true
+        return 0
     fi
+
+    # Bildirimi DENIYORUZ ama basarili SAYMIYORUZ: notify-send'in kurulu
+    # olmasi mesajin ULASTIGI anlamina gelmiyor. Oturum veriyolu yokken
+    # "name is not activatable" diye duser (VM'de olculdu) ve kullanici
+    # hicbir sey gormez; yalnizca varligina bakan bir denetim gunluk
+    # yedegine hic gecmez. Bu yuzden cikis kodu denetleniyor —
+    # sessizce olen bir cift tiklama teshis edilemez bir sikayettir.
+    if command -v notify-send >/dev/null 2>&1 &&
+       notify-send -a "MFAOS" -i mfaos -- "${title}" "${body}" 2>/dev/null
+    then
+        return 0
+    fi
+    logger -t mfaos-exe -- "${title}: ${body}" 2>/dev/null || true
 }
 
 # Hem sistem hem kullanici kurulumuna bakar.
