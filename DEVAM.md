@@ -22,7 +22,7 @@ Son guncelleme: 8 Kasim 2026
 | 4 — guncelleme ve OTOMATIK geri donus | **Tamam — VM'de olculdu** |
 | CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Tamam |
 | Imza zincirinin makine tarafi | Tamam — VM ghcr imajini `policy.json` altinda dogruladi |
-| Windows uygulamalari (.exe) | Tamam — VM'de 32/64 bit, konsol ve GUI olculdu |
+| Windows uygulamalari (.exe) | Tamam — CI'dan cikan dagitilmis imajda uctan uca olculdu |
 
 Imaj GNOME masaustu olarak aciliyor, kendini `MFAOS 0.1` diye
 tanitiyor, aygit adi `MFAOS` (hostname `mfaos`), Turkce arayuz ve
@@ -238,6 +238,35 @@ Dar kapsamli duzeltme (`setcap cap_sys_ptrace` wineserver'a) Flatpak
 icinde **yapilamiyor**; ya o makinede global ayari gevsetirsin ya da
 wine'i imaja katmanlarsin. Yapilan testlerde (konsol + GUI, 32 + 64
 bit) bu sinir hic devreye girmedi.
+
+#### Dagitilmis imajda dogrulama (son adim)
+
+Yukaridaki olcumler tesisat elle imaj yollarina konarak yapildi. Son
+adim gercek yoldan gecti: push -> CI derledi (`lint` + `mfaos` yesil)
+-> `bootc upgrade` -> yeniden baslatma. Dagitilmis imajda
+(`sha256:36ae3f3c`, 258 katmanin 257'si zaten mevcuttu, indirilen
+**1 katman / 93,3 MB**, dagitim 36 saniye):
+
+| Kontrol | Sonuc |
+|---|---|
+| `/usr` durumu | salt-okunur, `Unlocked: 0` — elle kurulan hicbir sey kalmadi |
+| `systemd-binfmt` (elle restart YOK) | `success`, cikis 0 |
+| `mfaos-exe` kaydi onyuklemede | `enabled`, `magic 4d5a`, bayrak yok, yorumlayici dogru |
+| taban imajin `qemu-aarch64` kaydi | yaninda duruyor, bozulmadi |
+| dosya kipleri | 755 sarmalayici, 644 uc veri dosyasi |
+| MIME varsayilani (kullanici dosyasi yok) | dort tipin dordunde `mfaos-exe.desktop` |
+| `./surum.exe /c ver` | `Microsoft Windows 10.0.19045`, cikis 0 |
+| **`gio open not.exe`** (cift tiklama) | `not.exe` Windows surec tablosunda, PID 220 |
+| greenboot | `success` |
+| SELinux | `Enforcing` |
+
+Onyuklemeden sonra 12 AVC reddi sayildi, **hicbiri bu tesisattan
+degil**: 6'si `bootupctl` (`/sysroot/.bootc-aleph.json` dosyasi
+`default_t`/`unlabeled_t` etiketli), 6'si `chcon` + `mac_admin`.
+Gunlugun tamaminda bu iki islem 340 reddinin **hepsini** olusturuyor,
+yani her onyuklemede yineliyorlar — bu imajin eskiden beri suren,
+daha once kayda gecmemis bir durumu. `run-exe`, `mfaos-exe`, `binfmt`,
+`wine` ya da `flatpak` adi gecen reddi sayisi: 0.
 
 ### HENUZ TEST EDILMEMIS
 
