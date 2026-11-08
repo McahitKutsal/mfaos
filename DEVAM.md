@@ -53,6 +53,23 @@ Zincirin tamami VM'de, mudahalesiz kosturuldu. Kanit satirlari:
 - Besinci acilis yesil; acilan deployment `arm` oncesindeki, bozuk
   deployment `(rollback)` yuvasinda.
 
+Test **iki kez** kosturuldu. Ikincisi daha gercekci ve hukmu daha
+saglam: eski bir digest'e gecmek yerine gercek `bootc upgrade` ile en
+yeni CI imajina yukseltildi, yani "bozuk guncelleme geldi" senaryosunun
+kendisi kosuldu.
+
+En guclu kanit, bizim hicbir kaydimiza dayanmayan sey: host'tan deployment
+checksum'i izlenirken degisimin GORULMESI.
+
+```
+[11:51:19] deployment=35d8b55b8a26  boot_success=0  boot_counter=0
+[11:52:08] deployment=8dc30ed54430  boot_success=1  boot_counter=yok
+```
+
+Ilk satirda bozuk (yeni) deployment'tayiz ve sayac tukenmis; ikincisinde
+makine kendi basina arm oncesi deployment'a gecmis. Arada hicbir
+mudahale yok.
+
 **Zincirin sinirini bilmek lazim:** geri donusu GRUB degil greenboot
 yapiyor, yani kullanici alaninda. Bozuk deployment'in greenboot'u
 kosturacak kadar acilmasi gerekiyor. Hic acilmayan bir deployment
@@ -68,6 +85,34 @@ saglikli goruyor, sayaci temizliyor ve bozuk deployment'i iyi olarak
 muhurluyor. Ilk olcumde tam bu oldu ve sonuc "geri donus yok" cikti —
 isletim sisteminde degil, testte hata vardi. `rollback-test.sh` esigi
 artik greenboot'un kendi ayarindan turetiyor.
+
+**Hukmun kendisi de BOS cikabilir — asil tuzak bu.** Hukum bir sure
+yalnizca `MFAOS_BUILD_DATE`'e bakiyordu, yani os-release'e KENDIMIZIN
+yazdigi bir alana. Iki deployment ayni derlemeden geliyorsa o alan AYNI
+olur ve karsilastirma "geri donus gerceklesti" der — geri donus olsa da
+olmasa da. Yani test kendi sonucunu dogrulayamaz hale geliyor, ustelik
+sessizce.
+
+Uc sey birlikte gerekiyor:
+
+1. **Yapisal olcut.** Hukum artik deployment'in ostree checksum'ina
+   bakiyor (`ostree admin status`'ta `*` isaretli satir). Kimligi biz
+   uretmiyoruz, ostree uretiyor, ve her deployment'in checksum'i ayri.
+   `MFAOS_BUILD_DATE` raporda destekleyici olarak duruyor, hukmu
+   vermiyor.
+2. **Onsart denetimi.** `arm` anindakinden FARKLI en az bir deployment
+   bulunmali. Yoksa sonuc "gecti" degil, **"test HUKUMSUZ"**. Stage
+   adimi islememis ya da ayni commit'e cozulmusse bunu soyleyen tek sey
+   bu.
+3. **Stage sonrasi UC deployment olabiliyor** (staged + booted +
+   rollback), o yuzden acilmis olmayanlarin ILKI degil hepsi okunuyor;
+   ilkini almak raporda yanlis deployment'i isimlendiriyordu.
+
+Ayrica "sonunda acildi" hicbir sey kanitlamiyor, ve sebebi sanilandan
+guclu: sayac `/var/lib`'de, `/var` ise deployment'lar arasinda
+PAYLASILIYOR. Yani kontrolun kendini kapatmis olmasi her iki
+deployment'ta gecerli; son acilisin yesil olmasi hangi deployment'ta
+oldugumuz hakkinda hicbir sey soylemiyor.
 
 ### Makine adi nasil duzeltildi
 
@@ -494,10 +539,20 @@ turunda bes acilis da ayni degeri gosterdi, sanki hicbir sey
 degismemis gibi. Ilk okumada bunu deployment kimligi sanip "GRUB
 yedege gecmiyor" diye yanlis bir sonuca varmistim.
 
-"Geri donus oldu mu" sorusunu kesin yanitlayan iki kaynak var:
-`rollback-test.sh`'in `arm` aninda kaydettigi `MFAOS_BUILD_DATE`
-karsilastirmasi, ve greenboot'un kendi satiri — `Boot counter exhausted
-and next-deployment-id is set - initiating rollback`.
+"Geri donus oldu mu" sorusunu kesin yanitlayan uc kaynak var:
+
+1. **Deployment'in ostree checksum'i** — `ostree admin status`'ta `*`
+   isaretli satir. `rollback-test.sh` bunu `arm` aninda kaydediyor ve
+   sonra karsilastiriyor. Yapisal kimlik: ostree uretiyor, biz degil.
+2. **Host'tan izleyip degisimi gormek** — ssh ile checksum'i ornekleyip
+   bozuk deployment'tan iyisine gecisi dogrudan yakalamak. Hicbir
+   kaydimiza dayanmadigi icin en guclu kanit bu.
+3. **greenboot'un kendi satiri** — `Boot counter exhausted and
+   next-deployment-id is set - initiating rollback`.
+
+`MFAOS_BUILD_DATE` karsilastirmasi bu listede DEGIL, cunku iki
+deployment ayni derlemeden geliyorsa bos hukum veriyor (bak: 1. bolum,
+"Hukmun kendisi de BOS cikabilir").
 
 **Makine adini initramfs'in systemd'si koyuyor; os-release'deki
 `DEFAULT_HOSTNAME` tek basina yetmiyor.** Olculen satirlar, monotonic

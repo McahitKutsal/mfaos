@@ -25,10 +25,34 @@ head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 CHECK=/etc/greenboot/check/required.d/99-mfaos-rollback-test.sh
 COUNT=/var/lib/mfaos-rollback-test.count
 BEFORE=/var/lib/mfaos-rollback-test.before
+BEFORE_DEPLOY=/var/lib/mfaos-rollback-test.before-deploy
 
-# Hangi imajda oldugumuzu kendi alanimizdan okuyoruz. bootc status JSON
-# semasini tahmin etmek yerine 50-branding.sh'in yazdigi alani
-# kullaniyoruz: adi bize ait, degismesi bizim elimizde.
+# ASIL olcut bu: deployment'in ostree checksum'i. Kimligi biz
+# uretmiyoruz, ostree uretiyor, ve her deployment'in checksum'i yapisal
+# olarak ayri.
+#
+# Neden gerekti: hukum once YALNIZCA MFAOS_BUILD_DATE'e bakiyordu, yani
+# os-release'e KENDIMIZIN yazdigi bir alana. Iki deployment ayni
+# derlemeden geliyorsa o alan AYNI olur ve hukum BOS cikar — geri donus
+# olsa da olmasa da "ayni" yazar. Testin kendi sonucunu dogrulayamaz
+# hale gelmesi demek bu.
+#
+# `*` isaretli satir acilmis deployment:
+#   * default 8dc30ed5...0
+#     default a89e1c3e...0 (rollback)
+deploy_id() { ostree admin status 2>/dev/null | awk '/^\*/ {print $3; exit}'; }
+
+# Acilmis OLMAYAN butun deployment'lar: stage edilen, ve/veya geri
+# dusmus olan. Stage anindan sonra UC tane olabiliyor (staged + booted +
+# rollback), o yuzden ilkini degil HEPSINI okuyoruz — ilkini almak
+# raporda yanlis deployment'i isimlendiriyordu.
+#
+# Hukmun ONSARTI: bunlarin arasinda arm anindakinden FARKLI en az biri
+# olmali. Yoksa karsilastirilacak iki sey yok, yani test hukumsuz.
+others() { ostree admin status 2>/dev/null | awk '!/^\*/ && $1 == "default" {print $2}'; }
+
+# Destekleyici olcut: 50-branding.sh'in yazdigi alan. Insan tarafindan
+# okunabildigi icin raporda duruyor, ama hukmu tek basina VERMIYOR.
 build_id() { grep -h "^MFAOS_BUILD_DATE=" /usr/lib/os-release 2>/dev/null | cut -d= -f2- | tr -d '"'; }
 
 # Yanlis makinede calistirilmamali: `arm` bilerek basarisiz boot uretir.
@@ -163,23 +187,48 @@ cmd_status() {
     fi
 
     head_ "5. Test kontrolu"
-    # Asil hukum. "Sonunda acildi" hicbir sey kanitlamiyor: kontrol
-    # kendini kapattigi icin geri donus olsa da olmasa da aciliyor.
-    # Ayirt eden tek sey HANGI deployment'in acildigi.
-    if [[ -f "${BEFORE}" ]]; then
-        local before now
-        before="$(cat "${BEFORE}" 2>/dev/null)"
-        now="$(build_id)"
-        info "arm aninda: ${before:-?}"
-        info "su an:      ${now:-?}"
-        if [[ -z "${before}" || -z "${now}" ]]; then
-            warn "imaj kimligi okunamadi, hukum verilemiyor"
-        elif [[ "${before}" == "${now}" ]]; then
+    # Asil hukum. "Sonunda acildi" HICBIR sey kanitlamiyor: kontrol
+    # kendini kapattigi icin geri donus olsa da olmasa da aciliyor,
+    # ustelik sayac /var'da oldugu ve /var paylasildigi icin o kapanma
+    # durumu her iki deployment'ta gecerli. Ayirt eden tek sey HANGI
+    # deployment'in acildigi.
+    if [[ -f "${BEFORE_DEPLOY}" ]]; then
+        local bd now_d oth bi o have_other
+        bd="$(cat "${BEFORE_DEPLOY}" 2>/dev/null)"
+        now_d="$(deploy_id)"
+        oth="$(others)"
+        bi="$(cat "${BEFORE}" 2>/dev/null || true)"
+        info "arm aninda deployment: ${bd:-?}"
+        info "su an deployment:      ${now_d:-?}"
+        info "imaj (destekleyici):   ${bi:-?} -> $(build_id)"
+
+        # ONSART: arm anindakinden FARKLI en az bir deployment olmali.
+        # Stage edilen sey acilmis olanla ayni commit'e cozulduyse test
+        # hicbir sey olcmemistir; orada "gecti" demek yanlis olur.
+        have_other=0
+        while read -r o; do
+            [[ -z "${o}" ]] && continue
+            info "diger deployment:      ${o}"
+            if [[ "${o}" != "${bd}" ]]; then have_other=1; fi
+        done <<<"${oth}"
+        [[ -z "${oth}" ]] && info "diger deployment:      yok"
+
+        if [[ -z "${bd}" || -z "${now_d}" ]]; then
+            warn "deployment kimligi okunamadi, hukum verilemiyor"
+        elif [[ "${have_other}" -eq 0 ]]; then
+            bad "arm anindakinden farkli deployment yok — test HUKUMSUZ"
+            info "stage islememis ya da ayni commit'e cozulmus;"
+            info "ostree admin status'ta IKI ayri checksum gormelisin"
+        elif [[ "${now_d}" == "${bd}" ]]; then
             ok "GERI DONUS GERCEKLESTI — arm oncesi deployment'tasin"
         else
             bad "geri donus OLMADI — yeni deployment'ta acilmissin"
-            info "greenboot kontrolu basarisizdi ama GRUB geri donmedi"
+            info "greenboot kontrolu basarisizdi ama geri donus yapilmadi"
         fi
+    elif [[ -f "${BEFORE}" ]]; then
+        # Eski bir arm'dan kalma kayit: deployment kimligi yok, yalnizca
+        # imaj kimligi var. O tek basina hukum veremiyor.
+        warn "yalnizca imaj kimligi kayitli (eski arm) — yeniden arm et"
     fi
 
     if [[ -f "${CHECK}" ]]; then
@@ -237,9 +286,11 @@ cmd_arm() {
     install -d "$(dirname "${CHECK}")" /var/lib
     rm -f "${COUNT}"
     # Testin sonucu "acildi mi" ile OLCULEMEZ: kontrol kendini kapattigi
-    # icin geri donus olsa da olmasa da sonunda aciliyor. Olculebilir
-    # tek sey HANGI deployment acildigi, o yuzden simdikini kaydediyoruz.
-    build_id > "${BEFORE}"
+    # icin geri donus olsa da olmasa da sonunda aciliyor. Olculebilir tek
+    # sey HANGI deployment'in acildigi. Hukmu deployment checksum'i
+    # veriyor; imaj kimligi yalnizca rapora yaziliyor.
+    deploy_id > "${BEFORE_DEPLOY}"
+    build_id  > "${BEFORE}"
 
     cat > "${CHECK}" <<'CHK'
 #!/usr/bin/env bash
@@ -262,7 +313,8 @@ C=/var/lib/mfaos-rollback-test.count
 MAX=3
 for f in /etc/greenboot/greenboot.conf /usr/lib/greenboot/greenboot.conf; do
     [[ -r "${f}" ]] || continue
-    v="$(grep -hm1 '^[[:space:]]*GREENBOOT_MAX_BOOT_ATTEMPTS=' "${f}"          | cut -d= -f2 | tr -dc '0-9')"
+    v="$(grep -hm1 '^[[:space:]]*GREENBOOT_MAX_BOOT_ATTEMPTS=' "${f}" \
+         | cut -d= -f2 | tr -dc '0-9')"
     if [[ -n "${v}" ]]; then MAX="${v}"; break; fi
 done
 LIMIT=$(( MAX + 1 ))
@@ -283,8 +335,12 @@ CHK
     echo "Sirada:"
     echo "  1. sudo bootc switch ghcr.io/mcahitkutsal/mfaos:44"
     echo "     (upgrade DEGIL: kaynak localhost kaldiysa hicbir sey stage etmez)"
-    echo "  2. bootc status              # 'staged' gorunmeli"
-    echo "  3. sudo systemctl reboot"
+    echo "     Hedef GERCEKTEN farkli bir imaj olmali. Ayni commit'e"
+    echo "     cozulurse karsilastirilacak iki deployment olmaz ve status"
+    echo "     'test HUKUMSUZ' der — yanlislikla 'gecti' demez."
+    echo "  2. ostree admin status       # IKI ayri checksum gorunmeli"
+    echo "  3. bootc status              # 'staged' gorunmeli"
+    echo "  4. sudo systemctl reboot"
     echo
     echo "Beklenen: kontrol DORT acilis boyunca basarisiz olur. greenboot"
     echo "ilk basarisizlikta boot_counter'i kurar, sonrakilerde indirir;"
@@ -298,7 +354,7 @@ CHK
 cmd_disarm() {
     require_ostree
     require_root
-    rm -f "${CHECK}" "${COUNT}" "${BEFORE}"
+    rm -f "${CHECK}" "${COUNT}" "${BEFORE}" "${BEFORE_DEPLOY}"
     echo "Test kontrolu ve sayac kaldirildi."
     echo "Bir sonraki acilista saglik kontrolu normale doner."
 }
