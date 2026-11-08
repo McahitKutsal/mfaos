@@ -236,6 +236,88 @@ paylasiliyor.
 
 ---
 
+## Windows uygulamalari (.exe)
+
+Motor imajda **degil** — bilincli karar. Imaja katmanlamak 112 paket /
+2,0 GiB kurulu boyut demekti ve `.exe` calistirmayacak makinelere de
+giderdi. Imajda yalnizca tesisat var (binfmt kaydi + MIME isleyicisi +
+`mfaos-exe` komutu, birkac KB). Motoru bir kez kuruyorsun:
+
+```bash
+# Kolay yol — grafik arayuz, her uygulama icin ayri "sise"
+flatpak install flathub com.usebottles.bottles
+
+# Yalin yol — yalnizca motor (~395 MB, gecko ve mono dahil)
+flatpak install flathub org.winehq.Wine
+```
+
+Sonra `.exe` uc yoldan aciliyor:
+
+```bash
+chmod +x kurulum.exe
+./kurulum.exe            # binfmt_misc: MZ imzasini yakalayip Wine'a verir
+
+mfaos-exe kurulum.exe    # elle cagirmak
+
+# Dosyalar'da cift tiklamak da calisir (MIME isleyicisi)
+```
+
+`chmod +x` sart: binfmt yalnizca calistirma biti acik dosyalarda
+devreye giriyor. Bu kasitli — her indirilen `.exe` kendiliginden
+calistirilabilir olmuyor.
+
+### Kum havuzu dosya erisimi — en sik takilinan yer
+
+`org.winehq.Wine` varsayilan olarak **yalnizca** Belgeler, Masaustu,
+Indirilenler, Resimler, Muzik ve Videolar klasorlerini goruyor. Olculdu:
+`~/baskaklasor/app.exe` ve `/tmp/app.exe` kum havuzunda "dosya yok"
+diye duser.
+
+`mfaos-exe` bunu, cagrildigi `.exe`'nin **bulundugu dizini** calisma
+aninda acarak cozuyor (`--filesystem=<dizin>`) — butun diski degil, en
+az yetki. Uygulama baska yerlere de ulasmak istiyorsa kalici izni sen
+verirsin:
+
+```bash
+flatpak override --user --filesystem=home org.winehq.Wine
+flatpak override --user --reset org.winehq.Wine      # geri al
+```
+
+### Calismayan uygulama
+
+```bash
+# Hangi motor bulunuyor?
+flatpak info org.winehq.Wine
+flatpak info com.usebottles.bottles
+
+# Wine'in kendi gunlugunu gor (mfaos-exe sessizlestirmiyor)
+WINEDEBUG=+loaddll mfaos-exe kurulum.exe 2>&1 | tail -40
+
+# Gurultuyu kapat
+WINEDEBUG=-all mfaos-exe kurulum.exe
+```
+
+**Bellek okuyan uygulamalar** (anti-cheat, overlay/istatistik araclari)
+sertlestirme yuzunden duser. Sebebi Wine degil, bizim kararimiz:
+`99-mfaos-hardening.conf` `kernel.yama.ptrace_scope = 1` yaziyor,
+Fedora varsayilani `0`. `wineserver` kardes sureclerin bellegini
+okudugu icin Yama bunu engelliyor.
+
+Dar kapsamli cozum (`setcap cap_sys_ptrace=eip /usr/bin/wineserver`)
+Flatpak icinde **yapilamiyor**. Secenekler:
+
+```bash
+# A) O makinede gecici olarak gevset — SISTEM GENELI bir zayiflama,
+#    her kullanici sureci digerinin bellegini okuyabilir hale gelir.
+sudo sysctl kernel.yama.ptrace_scope=0        # yeniden baslatinca geri doner
+
+# B) Kalici ve dar cozum: wine'i imaja katmanla ve setcap uygula.
+#    Bedeli 2,0 GiB; ancak gercekten gerekiyorsa.
+```
+
+Testlerimde (konsol ve GUI, 32 ve 64 bit) `ptrace_scope=1` hicbir
+sorun cikarmadi — bu yalnizca bellek okuyan uygulamalari etkiliyor.
+
 ## Logolari yeniden uret
 
 Sadece logo kaynagi degistiginde gerekiyor; cikti depoya commit ediliyor.

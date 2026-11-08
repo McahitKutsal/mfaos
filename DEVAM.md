@@ -22,6 +22,7 @@ Son guncelleme: 8 Kasim 2026
 | 4 — guncelleme ve OTOMATIK geri donus | **Tamam — VM'de olculdu** |
 | CI: derle -> dogrula -> ghcr'ye gonder -> cosign imzala | Tamam |
 | Imza zincirinin makine tarafi | Tamam — VM ghcr imajini `policy.json` altinda dogruladi |
+| Windows uygulamalari (.exe) | Tamam — VM'de 32/64 bit, konsol ve GUI olculdu |
 
 Imaj GNOME masaustu olarak aciliyor, kendini `MFAOS 0.1` diye
 tanitiyor, aygit adi `MFAOS` (hostname `mfaos`), Turkce arayuz ve
@@ -144,6 +145,70 @@ Kullanicinin secimi kazaniyor: birimde
 hostname: (unset)` / `Transient hostname: mfaos` gosteriyor.
 Ayarlar'dan ad degistirilince `/etc/hostname` olusuyor ve birim bir
 daha hic kosmuyor.
+
+### Windows uygulamalari (.exe) nasil eklendi
+
+Soru "mumkun mu" diye geldi; cevap tahminle degil olcumle verildi. Uc
+yol vardi ve aralarindaki tek ciddi fark imaj agirligi:
+
+| Yol | Imajda | /var'da |
+|---|---|---|
+| Flatpak motor | **0 bayt** | 848 MB Wine + paylasilan calisma zamani (toplam 2,2 GB) |
+| Imaja katmanlamak | 112 paket / 610 MiB indirme / **2,0 GiB kurulu** | 0 |
+| distrobox | 0 bayt | konteyner boyutu |
+
+Secilen: **karma**. Motor Flatpak'ten geliyor — projenin kendi ilkesi
+bu (30-desktop.sh: "degismez bir sistemde uygulamalar imaja girmez").
+Ama `.exe`'nin yerli gibi davranmasi isletim sistemi tesisati, o
+yuzden imaja giren sey (birkac KB):
+
+- `files/usr/lib/binfmt.d/10-mfaos-exe.conf` — `MZ` imzasi -> sarmalayici
+- `files/usr/libexec/mfaos/run-exe.sh` — motoru bulur, dosya iznini verir
+- `files/usr/share/applications/mfaos-exe.desktop` — MIME isleyicisi
+- `files/etc/xdg/mimeapps.list` — varsayilan isleyici
+- `build_files/35-windows.sh` — `mfaos-exe` bagi + derleme denetimleri
+
+binfmt yolunun imajda zaten kanitli altyapisi vardi: `systemd-binfmt`
+`active` ve taban imajda calisan bir `qemu-aarch64` kaydi duruyor.
+
+**VM'de olculen** (sertlestirme acik: SELinux `Enforcing`,
+`ptrace_scope=1`):
+
+| Test | Sonuc |
+|---|---|
+| 64-bit konsol PE (`cmd.exe /c ver`) | `Microsoft Windows 10.0.19045` |
+| 32-bit konsol PE (syswow64 cmd.exe) | ayni cikti — WoW64 calisiyor |
+| 64-bit GUI PE (`notepad.exe`) | Windows surec listesinde, explorer.exe yaninda |
+| 32-bit GUI PE | `notepad.exe PID 216` |
+| `./test.exe` (binfmt, XDG disi klasor) | `Microsoft Windows 10.0.19045`, cikis 0 |
+| goreli yol + bosluklu dizin adi | gecti |
+| ptrace reddi | 0 |
+| SELinux AVC reddi | 0 |
+
+GUI testinde bir yanlis olumsuz yasandi: `pgrep -f notepad.exe`
+host'tan BOS donuyor, cunku flatpak PID ad alani kullaniyor. "Calismadi"
+sanildi; Wine'in kendi `tasklist`'iyle sorulunca surec orada cikti.
+Flatpak icindeki bir seyi host araclariyla saymak yaniltir.
+
+Olcum sirasinda cikan diger sayilar:
+
+- Fedora 44'te wine **11.20**, Flathub'da **11.0**
+- `wine-core.i686` F44'te **hala var** (11.0 ve 11.20), yani i686'yi
+  dusurme plani F44'te tam uygulanmamis
+- `wine-gecko` Fedora depolarinda **yok** (yalnizca `wine-mono` var);
+  flatpak ikisini de getiriyor (gecko 217 MB + mono 236 MB). Yani .NET
+  ve gomulu web icerigi icin Flatpak yolu RPM yolundan daha eksiksiz.
+- `.exe` MIME tipinin taban imajdaki sahibi **File Roller**'di, yani
+  cift tiklamak onu arsiv olarak acmayi deniyordu.
+  `application/vnd.microsoft.portable-executable` ise tamamen sahipsizdi.
+
+**Bilinen sinir:** bellek okuyan uygulamalar (anti-cheat, overlay
+araclari) `kernel.yama.ptrace_scope = 1` yuzunden duser. Fedora
+varsayilani 0 — bu bizim sertlestirme kararimiz, Wine'in kusuru degil.
+Dar kapsamli duzeltme (`setcap cap_sys_ptrace` wineserver'a) Flatpak
+icinde **yapilamiyor**; ya o makinede global ayari gevsetirsin ya da
+wine'i imaja katmanlarsin. Yapilan testlerde (konsol + GUI, 32 + 64
+bit) bu sinir hic devreye girmedi.
 
 ### HENUZ TEST EDILMEMIS
 
@@ -649,6 +714,162 @@ git ls-files -z '*.sh' | xargs -0 -n1 bash -n
 
 ---
 
+### Calisma agacinda CRLF — git gizliyor, yerel derleme oluyor
+
+`./test.sh build` su hatayla duser:
+
+```
+/tmp/build_files/10-packages.sh: line 3: set: pipefail: invalid option name
+```
+
+Sebep: dosya calisma agacinda CRLF. `set -euo pipefail\r` satirinda
+bash `pipefail\r`'i gecersiz secenek adi sayiyor.
+
+Asil tuzak **git'in bunu gostermemesi**. `.gitattributes`'taki
+`* text=auto eol=lf` yuzunden git karsilastirirken CRLF'i LF'e
+normalize ediyor, yani `git status` TEMIZ diyor. Ama `COPY files/ /`
+ham baytlari kopyaliyor — imaja CRLF giriyor.
+
+Ve CI bunu hic gormuyor, cunku Linux checkout'u LF. Yani **CI yesil,
+yerel derleme olu**: en yaniltici kombinasyon.
+
+22 dosya bu durumdaydi ve aralarinda imaja DOGRUDAN kopyalananlar da
+vardi: `99-mfaos-hardening.conf` (sysctl satiri `\r` ile biterse
+uygulanmaz), `locale.conf`, `vconsole.conf`, `10-hardening.toml`,
+systemd drop-in'leri, hatta `cosign.pub`.
+
+Kaynagi muhtemelen PowerShell: Windows PowerShell 5.1'de
+`Set-Content` ve `Out-File` varsayilan olarak CRLF yaziyor.
+
+Bulmak ve duzeltmek:
+
+```bash
+# Hangi dosyalar? git'in raporuna degil GERCEK baytlara bak.
+git ls-files -z | while IFS= read -r -d '' f; do
+  [ -f "$f" ] || continue
+  case "$f" in *.png) continue ;; esac
+  grep -qU $'\r' "$f" && echo "$f"
+done
+
+# Duzelt. Icerik DEGISMIYOR: git zaten LF sakliyor, yalnizca
+# calisma agaci git'in sakladigi hale donuyor.
+sed -i 's/\r$//' <dosya>
+```
+
+`git ls-files --eol` de gosteriyor (`i/lf w/crlf`) ama ciktisini
+ayristirmak baska bir tuzak: `attr/` alani BOSLUK iceriyor
+("attr/text=auto eol=lf"), o yuzden `read -r i w attr path` yoldan
+cikiyor ve dosya adi `path`'e girmiyor.
+
+Duzeltmeden sonra `git status` o dosyalari bir sure ` M` gosterebilir;
+bu bayatlamis stat bilgisi, icerik farki degil. `git diff --numstat`
+bos donuyorsa gercekten fark yok.
+
+### binfmt.d satirinda awk alan numaralari bir kayiyor
+
+`:ad:tip:ofset:imza:maske:yorumlayici:bayraklar` satiri iki nokta ile
+**basliyor**, yani `awk -F:` icin `$1` BOS kaliyor ve her sey bir
+kayiyor:
+
+```
+$2=ad  $3=tip  $4=ofset  $5=imza  $6=maske  $7=yorumlayici  $8=bayraklar
+```
+
+Yorumlayiciyi `$6` sanmak bos deger okutuyor. 35-windows.sh'in kendi
+denetimi bunu derleme sirasinda yakaladi ve derlemeyi durdurdu —
+dogrulama kontrolu koymanin karsiligi tam olarak bu.
+
+### Flatpak kum havuzu ev dizinini gormuyor
+
+`org.winehq.Wine` varsayilan olarak yalnizca `xdg-documents`,
+`xdg-desktop`, `xdg-download`, `xdg-pictures`, `xdg-music` ve
+`xdg-videos` goruyor. Olculdu: `~/baskaklasor/app.exe` ve
+`/tmp/app.exe` kum havuzunun icinde "dosya yok".
+
+Bu yuzden bir `.exe`'yi flatpak'e **goreli** yolla vermek de olumcul:
+goreli yol kum havuzunun icinde bambaska bir yeri gosterir ve hata
+mesaji "dosya yok" olur, sebebini soylemez. `run-exe.sh` once
+`readlink -f` ile mutlaklastiriyor, sonra `--filesystem=<dizin>`
+veriyor — butun diski degil, yalnizca `.exe`'nin dizinini.
+
+### zenity bu imajda yok
+
+Masaustu mesaji icin reflex olarak `zenity` yazilir ama Silverblue 44
+tabaninda **yok**. Olculdu — var olanlar: `notify-send` ve `gdbus`.
+`run-exe.sh` once tty'ye bakiyor, tty yoksa `notify-send`, o da yoksa
+`logger` kullaniyor: cift tiklamanin sessizce olmesi teshis edilemez
+bir sikayet olur.
+
+### /mnt/c uzerinden derlemek dosya kiplerini 777 yapiyor
+
+`./test.sh build` yerelde kosunca `verify.sh` su hatayi veriyor:
+
+```
+HATA  yapilandirma dosyasinda calistirma biti var:
+      .../99-mfaos-hardening.conf .../policy.json ...
+```
+
+Depo kusurlu degil. WSL, `/mnt/c` (drvfs) uzerindeki **her dosyayi
+777** gosteriyor; podman build context'i oradan okudugu icin butun
+yapilandirma dosyalari calistirilabilir olarak imaja giriyor. git
+indeksinde kipler dogru (`100644`), o yuzden **CI temiz** — CI git'ten
+checkout ediyor.
+
+Yine CRLF tuzagiyla ayni sinif: yerel derleme CI ile ayni seyi
+olcmuyor. Ve ters yonde de yaniltici — `files/usr/libexec/mfaos/
+run-exe.sh` icin "calistirilabilir mi" denetimi yerelde her zaman
+GECER, cunku her sey 777.
+
+CI ile ayni seyi olcmek icin derlemeyi git'in agacindan yap:
+
+```bash
+# WSL icinde, native dosya sisteminde (ext4) — kipler git'ten gelir
+TREE=$(git -C /mnt/c/.../mfaos write-tree)
+rm -rf /tmp/mfaos-ci && mkdir -p /tmp/mfaos-ci
+git -C /mnt/c/.../mfaos archive "$TREE" | tar -x -C /tmp/mfaos-ci
+cd /tmp/mfaos-ci && ./test.sh build && ./test.sh verify
+```
+
+`write-tree` INDEKSI kullaniyor, yani once `git add` etmek gerekiyor;
+commit'e gerek yok.
+
+### Exec yolu yanlis olan .desktop SESSIZCE yok sayiliyor
+
+Bir dosya isleyicisi ekledin, `desktop-file-validate` "gecerli" diyor,
+`mimeinfo.cache`'te girdi var — ama cift tiklamak hicbir sey yapmiyor
+ve hicbir yerde hata yok.
+
+Sebep: GLib, `Exec=` satirindaki program **yoksa** girdiyi tamamen
+atliyor. Ne gunluk, ne uyari. VM'de olculdu:
+
+```
+Exec=/usr/libexec/mfaos/run-exe.sh %f      (o makinede yok)
+  -> gio mime application/vnd.microsoft.portable-executable
+     Kayitli uygulamalar: org.winehq.Wine.desktop     # bizimki YOK
+
+Exec=/usr/local/bin/mfaos-run-exe.sh %f    (var)
+  -> Kayitli uygulamalar: mfaos-exe.desktop, org.winehq.Wine.desktop
+     Onerilen: mfaos-exe.desktop
+     ontanimli uygulama: mfaos-exe.desktop
+```
+
+Yani `.desktop` dosyasini imajda OLMAYAN bir makinede denemek yanlis
+olumsuz uretiyor. Teshis komutu `gio mime <tip>`: isleyici listede yok
+ise sebep neredeyse her zaman Exec yolu.
+
+Bu yuzden hem `35-windows.sh` hem `verify.sh` artik `.desktop`'taki
+Exec yolunu sarmalayicinin yoluyla karsilastiriyor — binfmt
+yorumlayicisi icin yapilan denetimin aynisi.
+
+Yan bulgu: `NoDisplay=true` girdiyi "Onerilen uygulamalar" listesinden
+**dusurmuyor**. Yani bir dosya isleyicisi uygulama izgarasinda
+gorunmeden "Birlikte Ac" menusunde kalabiliyor — istenen davranis bu.
+
+Ikinci yan bulgu: `org.winehq.Wine` flatpak'i kendini zaten `.exe`
+isleyicisi olarak kaydediyor ve kurulunca varsayilan oluyor. Ama onun
+kendi isleyicisi kum havuzu iznini genisletmiyor; XDG disi bir klasorde
+duran `.exe`'yi acamaz. Bizim isleyicimizin var olma sebebi bu.
+
 ## 5. Bakim — projeyi bitiren sey bu
 
 Asil maliyet derleme degil, bakim.
@@ -681,6 +902,7 @@ build_files/10-packages.sh  paket katmanlama
 build_files/20-hardening.sh SELinux, servisler, guvenlik duvari
 build_files/25-rollback.sh  greenboot — basarisiz boot sonrasi geri donus
 build_files/30-desktop.sh   flatpak + guncelleme timer'i
+build_files/35-windows.sh   .exe butunlesmesi (binfmt + MIME) — wine KURMAZ
 build_files/40-nvidia.sh    NVIDIA (su an CI'da kapali)
 build_files/50-branding.sh  os-release / sistem kimligi
 build_files/60-logos.sh     fedora-logos logolari (allowlist) + GDM logosu
@@ -690,6 +912,8 @@ files/                      imajin kok dizinine oldugu gibi kopyalanir
 files/usr/lib/greenboot/    saglik kontrolleri (required.d = geri donus tetikler)
 files/usr/lib/systemd/      birimler ve drop-in'ler (mfaos-hostname.service dahil)
 files/usr/libexec/mfaos/    imajin kendi yardimci betikleri
+files/usr/lib/binfmt.d/     MZ imzasi -> run-exe.sh (./app.exe dogrudan kosar)
+files/etc/xdg/mimeapps.list .exe'nin varsayilan isleyicisi (File Roller'dan alindi)
 logo/                       logo kaynaklari (imaja girmez)
 add-logo.sh                 logo boyutlarini uretir (WHITE= ile beyaz varyant)
 preflight.sh                gelistirme ortami kontrolu

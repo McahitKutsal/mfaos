@@ -238,11 +238,35 @@ bootc switch <imaj>       # baska varyanta gec
 | Ne | Nereye |
 |---|---|
 | GUI uygulamalari | `flatpak install <app>` |
+| Windows (.exe) | Wine Flatpak'ten; `./app.exe` kutudan calisir |
 | CLI / gelistirme | `distrobox create` icinde |
 | Sistem servisi, surucu | Containerfile'a ekle, imaji yeniden yayinla |
 
 Bu ayrim projenin kalbi. Imaja her ekledigin sey her makineye ve her
 guncellemeye tasinir — ve senin bakim yukun olur.
+
+### Windows uygulamalari (.exe)
+
+Calisiyor — motor imajda olmadan. Imajda yalnizca tesisat var: `MZ`
+imzasini yakalayan bir `binfmt` kaydi, bir MIME isleyicisi ve
+`mfaos-exe` komutu, toplam birkac KB. Motoru bir kez kuruyorsun:
+
+```bash
+flatpak install flathub com.usebottles.bottles   # grafik arayuz, sise yonetimi
+flatpak install flathub org.winehq.Wine          # ya da yalin motor
+```
+
+Sonrasi yerli gibi:
+
+```bash
+chmod +x kurulum.exe && ./kurulum.exe    # Dosyalar'da cift tiklamak da calisir
+```
+
+Neden imaja katmanlanmadi: olculdu — `dnf install wine` Fedora 44'te
+112 paket ve 2,0 GiB kurulu boyut demek, ve `.exe` calistirmayacak
+makinelere de giderdi. Flatpak yolu imajda 0 bayt tutuyor ve maliyeti
+yalnizca isteyen makineye yikliyor. Kullanim, kum havuzu izinleri ve
+sinirlar: [KOMUTLAR.md](KOMUTLAR.md).
 
 ---
 
@@ -292,10 +316,17 @@ tek tek kontrol ediyor; kontrol sayisini betik kendisi bildiriyor.
 - RPM Fusion surumu taban imaj surumuyle eslesmezse paket kurulumu duser.
 - Fedora 45 gecisinde derleme scriptleri kirilacak: taban imaj degisince
   paket adlari ve dizin yapilari kayiyor.
-- greenboot geri donusu GRUB'a bagli ve **henuz gercek bir bozuk
-  guncellemeyle test edilmedi.** Ayrica `/boot` md RAID1 uzerindeyse
-  `boot_counter` kalici olmuyor (greenboot-rs #220) — tek diskli
-  kurulumda sorun degil.
+- greenboot geri donusu **GRUB'a bagli degil**: sayaci GRUB tutuyor
+  ama geri donusu greenboot kullanici alaninda yapiyor ("Boot counter
+  exhausted and next-deployment-id is set - initiating rollback").
+  Sonuc: hic acilmayan, greenboot'a kadar gelmeyen bir deployment bu
+  zincirle kurtarilamaz. Gercek bir bozuk guncellemeyle VM'de olculdu.
+  Ayrica `/boot` md RAID1 uzerindeyse `boot_counter` kalici olmuyor
+  (greenboot-rs #220) — tek diskli kurulumda sorun degil.
+- Bellek okuyan Windows uygulamalari (anti-cheat, overlay araclari)
+  `kernel.yama.ptrace_scope = 1` yuzunden duser. Fedora varsayilani 0;
+  bu bizim sertlestirme kararimiz. Dar kapsamli duzeltme
+  (`setcap cap_sys_ptrace` wineserver'a) Flatpak icinde yapilamiyor.
 
 ---
 
