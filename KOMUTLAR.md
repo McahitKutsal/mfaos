@@ -278,13 +278,31 @@ derleme bunu `UYARI` olarak yazar ama durmaz.
 
 ## CI ve yayin
 
-Push sonrasi GitHub Actions: derle -> **dogrula** -> ghcr'ye gonder ->
-cosign ile imzala. Dogrulama push'tan once; gecmezse imaj registry'ye
-hic cikmaz.
+Push sonrasi GitHub Actions **iki is** kosuyor ve birbirlerini
+ENGELLEMIYOR:
+
+- `build`: derle -> `verify.sh` ile dogrula -> ghcr'ye gonder ->
+  cosign ile imzala. `verify.sh` push'tan ONCE kosuyor, yani gecmezse
+  imaj registry'ye hic cikmaz.
+- `lint`: `bash -n` + shellcheck. Bu is **dusse bile** imaj derlenip
+  push'lanmaya devam ediyor.
+
+Yani "CI kirmizi" otomatik olarak "yeni imaj yok" demiyor — bir kez
+tam olarak bu oldu (lint dustu, imaj yine yayinlandi). Ikisine ayri
+ayri bakmak gerekiyor:
 
 ```bash
 gh run watch                                   # calisan derlemeyi izle
 gh run view --log-failed                       # patlayan adimin logu
+gh run view <id> --log | grep 'Successfully pushed'   # imaj cikti mi
 podman pull ghcr.io/mcahitkutsal/mfaos:44      # yayinlanani cek
 cosign verify --key cosign.pub ghcr.io/mcahitkutsal/mfaos:44
+```
+
+Push etmeden once lint'in sozdizimi adimini yerelde kosturabilirsin.
+shellcheck bu makinede kurulu DEGIL (WSL'de sudo parola istiyor), o
+yuzden shellcheck uyarilarini ancak CI gosteriyor:
+
+```bash
+git ls-files -z '*.sh' | xargs -0 -n1 bash -n
 ```

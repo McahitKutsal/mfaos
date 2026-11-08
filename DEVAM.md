@@ -5,7 +5,7 @@ Projenin ne oldugu `README.md`'de; burada **nerede kaldigimiz**,
 **sirada ne var** ve **hangi tuzaklara bir daha dusmemek gerektigi**
 var.
 
-Son guncelleme: 7 Kasim 2026
+Son guncelleme: 8 Kasim 2026
 
 ---
 
@@ -69,19 +69,43 @@ muhurluyor. Ilk olcumde tam bu oldu ve sonuc "geri donus yok" cikti —
 isletim sisteminde degil, testte hata vardi. `rollback-test.sh` esigi
 artik greenboot'un kendi ayarindan turetiyor.
 
+### Makine adi nasil duzeltildi
+
+os-release'e `DEFAULT_HOSTNAME` yazmak TEK BASINA yetmiyordu. Adi
+initramfs'in systemd'si koyuyor, KENDI os-release'ine gore, ve orada o
+alan yok: initramfs temel imajdan geliyor, yani markalama adimindan
+once uretilmis. Gercek kokun systemd'si de "ad zaten ayarli" diye
+uzerine yazmiyor. Cekirdek argumani yolu hic mevcut degil —
+`systemd.hostname` dizgisi systemd 259 ikilisinde bulunmuyor.
+
+Cozum `mfaos-hostname.service`: acilista bir kez adi
+`DEFAULT_HOSTNAME`'e cekiyor. VM'de olculen sira (monotonic):
+
+```
+[ 2.484] fedora  systemd[1]: Hostname set to <fedora>.      <- initramfs
+[ 8.041] fedora  systemd[1]: Starting mfaos-hostname.service...
+[ 8.106] mfaos   systemd-hostnamed: Hostname set to <mfaos> (transient)
+[ 8.110] mfaos   systemd[1]: Finished mfaos-hostname.service.
+[ 8.404] mfaos   systemd[1]: Starting gdm.service - GNOME Display Manager...
+```
+
+Gunlugun kendi makine adi alani iki satir arasinda `fedora`'dan
+`mfaos`'a geciyor; baska kanita gerek yok. `gdm` 294 ms SONRA
+basliyor, yani `Before=display-manager.service` isini yapiyor ve giris
+ekrani adi dogru goruyor.
+
+Kullanicinin secimi kazaniyor: birimde
+`ConditionPathExists=!/etc/hostname` var, ve `hostnamectl` `Static
+hostname: (unset)` / `Transient hostname: mfaos` gosteriyor.
+Ayarlar'dan ad degistirilince `/etc/hostname` olusuyor ve birim bir
+daha hic kosmuyor.
+
 ### HENUZ TEST EDILMEMIS
 
-**Katman 5: gercek donanim.** Hicbir fiziksel makineye kurulmadi. En
-buyuk eksik artik bu.
-
-**`mfaos-hostname.service` imajda kosmadi.** Bu oturumda eklendi; VM'de
-dogrulanan sey sorunun KENDISI (kabukta ad `fedora` kaliyor), cozumu
-degil. Yeni imaj acildiginda beklenen: `hostnamectl`'de `Static
-hostname: (unset)` ama adin `mfaos` olmasi.
-
-**`verify.sh`'in bu oturumda eklenen kontrolleri imajda kosmadi:**
-yapilandirma dosyalarinin calistirma biti ve `mfaos-hostname.service`
-kontrolleri. Sirada ilk is `./test.sh boot`.
+**Katman 5: gercek donanim.** Hicbir fiziksel makineye kurulmadi.
+Listede kalan tek eksik bu, ve en buyugu: USB'den kurulum, gercek
+disk ve UEFI, gercek ag donanimi, NVIDIA varyanti. QEMU'da olculen
+hicbir sey bunlarin yerine gecmiyor.
 
 ---
 
@@ -498,6 +522,67 @@ N read timed out`. Katman 4 testi uc-dort yeniden baslatma demek;
 laptop arada uyursa test yarida kaliyor ve sonuc okunamiyor — bizde tam
 olarak bu oldu, 21:08'de takildi 05:47'ye kadar oyle kaldi. Testi
 baslatmadan once makinenin uyumayacagindan emin ol.
+
+### Ham olmayan bir Python dizgisinde ters bolu + yeni satir = satir birlestirme
+
+Dosyalari Python ile duzenlerken bu iki kusur sessizce uretiliyor ve
+ikisi de `bash -n`'den GECIYOR:
+
+- `"...\` + yeni satir: Python bunu satir birlestirme sayiyor, kabugun
+  devam satirlari tek satira cokuyor.
+- `"\n"`: dosyaya yeni satir degil, iki karakter — ters bolu ve `n` —
+  yaziliyor.
+
+Uc kez isirdi. Ucuncusu `test.sh`'te uretim kusuruna dondu:
+
+    -serial "file:${serial}" \n        -display gtk
+
+`-display gtk` hic degismedi, yani `MFAOS_HEADLESS=1` test.sh
+uzerinden hicbir ise yaramiyordu, ve qemu'ya `n` diye bir arguman
+gidiyordu. Fark edilmemesinin sebebi: penceresiz kosumu test.sh'tan
+degil elle kurulmus bir qemu komutundan baslatmistim, yani o kod yolu
+hic kosmadi.
+
+Kural: kabuk devam satiri iceren metni Python'dan yazarken HAM dizgi
+kullan (`r"""..."""`), ve duzenledigin bolgeyi sonradan `cat -A` ya da
+`grep -nP '\n'` ile gozle dogrula. Bu kusuru yakalayan sey `bash -n`
+degil, shellcheck (SC1012) oldu.
+
+### Lint kapsamini elle saymak — denetlenmeyen dosya
+
+`.github/workflows/build.yml` hem sozdizimi hem shellcheck adiminda uc
+globu ELLE sayiyordu. Bu oturumda `files/usr/libexec/mfaos/` dizini
+eklendi, liste guncellenmedi, ve yeni betik `set-default-hostname.sh`
+HIC denetlenmedi — iceride bir kusur olsa ancak VM'de gorunurdu.
+Kapsam artik `git ls-files -z '*.sh'` ile geliyor, yani yeni bir dizin
+acilsa bile kendiliginden genisliyor.
+
+Ayni mantik `verify.sh` icin de gecerli ve bu projede bes kez isiradi:
+yeni bir dosya ekledigin anda onun kontrolunu de yaz.
+
+### Yerelde shellcheck yok — ve CI kirmizi iken imaj yine push'laniyor
+
+Bu makinede shellcheck kurulu degil: WSL'de `sudo` parola istiyor,
+indirilen ikili de kum havuzunda kosmuyor. Yani betik degisiklikleri
+yerelde yalnizca `bash -n` ile sinaniyor ve shellcheck uyarilari ilk
+kez CI'da goruluyor.
+
+Daha onemlisi: `lint` isi `build` isinden BAGIMSIZ kosuyor. Lint
+duserken imaj yine derleniyor, imzalaniyor ve ghcr'ye push'laniyor —
+yani "CI kirmizi" otomatik olarak "yeni imaj yok" demiyor. Iki ise
+ayri ayri bakmak gerekiyor:
+
+```bash
+gh run view <id> --json conclusion
+gh run view <id> --log | grep 'Successfully pushed'
+```
+
+Push etmeden once en azindan CI'in sozdizimi taramasini yerelde
+kosturabilirsin:
+
+```bash
+git ls-files -z '*.sh' | xargs -0 -n1 bash -n
+```
 
 ---
 
