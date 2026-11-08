@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Windows Application (Wine)
+Name[tr]=Windows Uygulamasi (Wine)
+Comment=Open Windows executables with Wine
+Comment[tr]=Windows uygulamalarini Wine ile acar
+Exec=/usr/libexec/mfaos/run-exe.sh %f
+Icon=mfaos
+Terminal=false
+# Uygulama izgarasinda GORUNMEMELI: bu bir baslatici degil, bir dosya
+# isleyicisi. Arguman olmadan calistirilirsa yapacak isi yok.
+# NoDisplay yine de "Birlikte Ac" listesinde ve MIME eslesmesinde
+# gorunmeye engel degil.
+NoDisplay=true
+MimeType=application/vnd.microsoft.portable-executable;application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/x-ms-shortcut;
+Categories=Utility;

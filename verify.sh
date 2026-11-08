@@ -481,6 +481,106 @@ head_ "8. NVIDIA"
 fi
 
 # ---------------------------------------------------------------
+head_ "9. Windows uygulamalari (.exe)"
+# ---------------------------------------------------------------
+# Wine'in KENDISI burada aranmiyor — bilerek imajda degil. Aranan sey
+# tesisatin eksiksiz olmasi. Zincir uc halkadan olusuyor (binfmt kaydi,
+# sarmalayici, MIME isleyicisi) ve biri kopuksa .exe SESSIZCE acilmiyor:
+# ne hata mesaji ne gunluk kaydi. O yuzden her halka tek tek olculuyor.
+have_file /usr/libexec/mfaos/run-exe.sh                "sarmalayici betik"
+have_file /usr/lib/binfmt.d/10-mfaos-exe.conf          "binfmt kaydi"
+have_file /usr/share/applications/mfaos-exe.desktop    ".desktop isleyicisi"
+have_file /etc/xdg/mimeapps.list                       "MIME varsayilanlari"
+
+WRAP=/usr/libexec/mfaos/run-exe.sh
+BFCONF=/usr/lib/binfmt.d/10-mfaos-exe.conf
+
+# Calistirma biti: depo Windows'ta core.filemode=false ile tutuluyor,
+# yani kip yalnizca git indeksinde yasiyor. Indekse 644 girerse binfmt
+# yorumlayiciyi kosturamaz ve kusur ancak gercek makinede gorunur.
+if [[ -x "${WRAP}" ]]; then
+    ok "sarmalayici calistirilabilir (0755)"
+else
+    bad "sarmalayici calistirilabilir DEGIL — binfmt onu kosturamaz"
+fi
+
+if [[ -L /usr/bin/mfaos-exe ]]; then
+    ok "mfaos-exe komutu var"
+else
+    bad "mfaos-exe komutu yok"
+fi
+
+# Yorumlayici yolu IKI ayri dosyada elle yaziyor. Biri degisip oteki
+# kalirsa kullanici "Exec format error" goruyor; burada yakaliyoruz.
+BF_INT="$(awk -F: '/^:mfaos-exe:/ {print $7}' "${BFCONF}" 2>/dev/null)"
+if [[ "${BF_INT}" == "${WRAP}" ]]; then
+    ok "binfmt yorumlayicisi sarmalayiciyla ayni"
+else
+    bad "binfmt yorumlayicisi uyusmuyor: '${BF_INT:-bos}' != '${WRAP}'"
+fi
+
+# .desktop'taki Exec yolu da sarmalayiciyi gostermeli. GLib, Exec'teki
+# program YOKSA girdiyi SESSIZCE atliyor — VM'de olculdu: yol yanlisken
+# `gio mime` isleyiciyi hic listelemiyor ve hicbir hata vermiyor. Yani
+# tek harflik bir yazim hatasi cift tiklamayi oldururken iz birakmaz.
+DT_EXEC="$(awk -F= '/^Exec=/ {print $2; exit}' \
+           /usr/share/applications/mfaos-exe.desktop 2>/dev/null \
+           | awk '{print $1}')"
+if [[ "${DT_EXEC}" == "${WRAP}" ]]; then
+    ok ".desktop Exec yolu sarmalayiciyla ayni"
+else
+    bad ".desktop Exec yolu uyusmuyor: '${DT_EXEC:-bos}' != '${WRAP}'"
+fi
+
+# Imza MZ olmali: PE basliginin ilk iki bayti. Yanlis imza ya hicbir
+# seyi yakalar ya da her seyi wine'a yonlendirir.
+if grep -q '^:mfaos-exe:M::MZ::' "${BFCONF}" 2>/dev/null; then
+    ok "binfmt imzasi MZ"
+else
+    bad "binfmt imzasi MZ degil"
+fi
+
+# F bayragi OLMAMALI. F yorumlayiciyi kayit aninda acip tutuyor ve
+# gercek bir ikili olmasini sart kosuyor; bizimki kabuk betigi.
+# Imajdaki qemu-aarch64-static.conf F kullaniyor (o bir ikili) — ona
+# bakip buraya F eklemek kaydi sessizce bozar.
+if awk -F: '/^:mfaos-exe:/ {print $8}' "${BFCONF}" 2>/dev/null | grep -q 'F'; then
+    bad "binfmt'te F bayragi var — betik yorumlayiciyla kayit tutmaz"
+else
+    ok "binfmt'te F bayragi yok (betik yorumlayici icin dogru)"
+fi
+
+# mimeapps.list'te varsayilan yaptigimiz her tip .desktop'ta da
+# bildirilmis olmali. Yalniz birinde olan bir tip icin cift tiklama
+# calismiyor.
+while IFS='=' read -r mt handler; do
+    case "${mt}" in application/*) ;; *) continue ;; esac
+    [[ "${handler}" == "mfaos-exe.desktop" ]] || continue
+    if grep -q "${mt}" /usr/share/applications/mfaos-exe.desktop 2>/dev/null; then
+        ok "MIME eslesmesi: ${mt}"
+    else
+        bad "MIME eslesmesi eksik: ${mt} .desktop'ta bildirilmemis"
+    fi
+done < /etc/xdg/mimeapps.list
+
+# Dosyalar isleyiciyi bu onbellekten okuyor. Girdi yoksa .desktop
+# dosyasi dogru olsa bile cift tiklama bir sey yapmiyor.
+if grep -q 'mfaos-exe.desktop' /usr/share/applications/mimeinfo.cache 2>/dev/null; then
+    ok "mimeinfo.cache'te kayitli"
+else
+    bad "mimeinfo.cache'te yok — Dosyalar isleyiciyi gormez"
+fi
+
+# Wine imajda OLMAMALI. Bu bir hata degil, dogrulanmasi gereken bir
+# KARAR: kazara katmanlanirsa (bir bagimlilik onu cekebilir) imaj
+# 2 GiB sisiyor ve kimse farketmiyor.
+if command -v wine >/dev/null 2>&1; then
+    warn "imajda wine var (~2 GiB) — motorun Flatpak'ten gelmesi bekleniyor"
+else
+    ok "wine imajda degil (motor Flatpak'ten gelecek)"
+fi
+
+# ---------------------------------------------------------------
 # Kontrol sayisini betik kendisi bildiriyor: dokumandaki sabit bir sayi
 # bayatlar, ciktidaki sayi bayatlamaz.
 printf '\n\033[1mSonuc:\033[0m %d kontrol — %d gecti, %d hata, %d uyari\n' \

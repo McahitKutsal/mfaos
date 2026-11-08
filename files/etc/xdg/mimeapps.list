@@ -1,0 +1,14 @@
+[Default Applications]
+# Gercek PE dosyalari bu tip olarak algilaniyor (VM'de dogrulandi:
+# `xdg-mime query filetype notepad.exe` -> vnd.microsoft.portable-executable)
+# ve taban imajda bu tipin SAHIBI YOKTU: cift tiklamak hicbir sey
+# yapmiyordu.
+application/vnd.microsoft.portable-executable=mfaos-exe.desktop
+
+# Bu tip taban imajda org.gnome.FileRoller.desktop'a bagliydi, yani
+# .exe'ye cift tiklamak onu ARSIV olarak acmayi deniyordu. Kendi
+# kendine acilan arsivler icin mantikli ama normal bir kurulumcu icin
+# yanlis; Wine'a yonlendiriyoruz.
+application/x-ms-dos-executable=mfaos-exe.desktop
+application/x-msdownload=mfaos-exe.desktop
+application/x-msi=mfaos-exe.desktop
