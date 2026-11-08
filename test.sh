@@ -204,6 +204,23 @@ vm() {
         echo "==> Secure Boot ACIK (${ovmf_code##*/})"
     fi
 
+    # Cekirdek komut satirinda console=ttyS0 ZATEN var (bootc imaji oyle
+    # uretiyor), yani seri portu dosyaya baglamak butun acilis gunlugunu
+    # host'a dusuruyor. VM ssh'a hic gelmeden takilirsa okunabilir tek
+    # kaynak bu: bir kosuda acilis iki kez erkenden takildi ve ekrana
+    # bakmaktan baska yol kalmadi, gunluk de diske hic yazilmamisti.
+    # Onceki kosuyu .1 olarak saklayip yenisine temiz basliyoruz.
+    local serial="${OUT_DIR}/serial.log"
+    [[ -f "${serial}" ]] && mv -f "${serial}" "${serial}.1"
+    # Acilis/geri donus testini otomatik kosturmak icin ekran gerekmiyor:
+    # seri gunluk + ssh yeterli. MFAOS_HEADLESS=1 pencere acmadan
+    # baslatir, boylece test basindan sonuna kadar mudahalesiz kosar ve
+    # "ekranda ne yaziyor" sorusuna hic dusulmez.
+    local display_args=(-display gtk)
+    if [[ "${MFAOS_HEADLESS:-0}" == "1" ]]; then
+        display_args=(-display none)
+        echo "==> Pencere YOK (MFAOS_HEADLESS=1); her sey ${serial}'a dusuyor"
+    fi
     echo "==> Baslatiliyor: ${qcow}"
     # QEMU penceresinde calismak eziyet: kaydirma yok, kopyala-yapistir
     # yok. 2222 yonlendirmesi, VM icinde bir kez sshd acildiktan sonra
@@ -213,6 +230,7 @@ vm() {
     echo "    VM icinde bir kez: sudo systemctl enable --now sshd"
     echo "    sonra host'tan:     wsl -d Ubuntu  (duz wsl degil!)"
     echo "                       ssh -p 2222 test@localhost  (parola: test)"
+    echo "    acilis gunlugu:    output/serial.log  (ssh gelmezse buraya bak)"
     qemu-system-x86_64 \
         -M "${machine}" -cpu host -enable-kvm \
         -m 4096 -smp 4 \
@@ -222,7 +240,7 @@ vm() {
         -drive file="${qcow}",if=virtio,format=qcow2 \
         -netdev user,id=net0,hostfwd=tcp::2222-:22 \
         -device virtio-net-pci,netdev=net0 \
-        -display gtk
+        -serial "file:${serial}" \n        -display gtk
 }
 
 case "${1:-build}" in
