@@ -1,0 +1,19 @@
+[Unit]
+Description=MFAOS varsayilan makine adi
+Documentation=man:os-release(5)
+# Statik ad VARSA hic kosmuyoruz: kullanici Ayarlar'dan adi
+# degistirdiginde /etc/hostname olusuyor ve onun secimi kazanmali.
+ConditionPathExists=!/etc/hostname
+# hostnamectl dbus uzerinden hostnamed'e gidiyor.
+Wants=systemd-hostnamed.service
+After=systemd-hostnamed.service
+# Giris ekrani adi dogru gormus olsun.
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/mfaos/set-default-hostname.sh
+
+[Install]
+WantedBy=multi-user.target

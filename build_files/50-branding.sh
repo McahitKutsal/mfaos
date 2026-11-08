@@ -85,6 +85,30 @@ grep -q "^DEFAULT_HOSTNAME=${OS_NAME}\$" /usr/lib/os-release || {
     echo "HATA: os-release'e DEFAULT_HOSTNAME yazilamadi." >&2
     exit 1
 }
+
+# DEFAULT_HOSTNAME tek basina YETMIYOR. Adi initramfs'in systemd'si
+# koyuyor, kendi os-release'ine gore, ve orada bu alan yok: initramfs
+# temel imajdan geliyor, bu adimdan once uretilmis. Olculen sonuc —
+# Ayarlar'daki aygit adi dogru (PRETTY_HOSTNAME oradan okunuyor), ama
+# kabukta ve agda ad `fedora` kaliyor. Asagidaki birim adi acilista bir
+# kez duzeltiyor; statik ad varsa hic kosmuyor.
+systemctl enable mfaos-hostname.service 2>/dev/null || true
+
+# `systemctl enable`in cikis kodu konteynerde guvenilir degil; gercek
+# kosulu — sembolik bagin olusup olusmadigini — kendimiz kontrol ediyoruz.
+if find /etc/systemd/system /usr/lib/systemd/system \
+     -name mfaos-hostname.service -type l 2>/dev/null | grep -q .; then
+    echo "  mfaos-hostname.service etkin"
+else
+    echo "HATA: mfaos-hostname.service etkinlestirilemedi — ad 'fedora' kalir." >&2
+    exit 1
+fi
+
+# Calistirma biti olmayan ExecStart birimi 203/EXEC ile duser.
+[[ -x /usr/libexec/mfaos/set-default-hostname.sh ]] || {
+    echo "HATA: set-default-hostname.sh calistirilabilir degil." >&2
+    exit 1
+}
 echo "Kimlik: $(grep '^PRETTY_NAME=' /usr/lib/os-release)"
 echo "Aygit adi: ${OS_PRETTY_NAME} (hostname: ${OS_NAME})"
 exit 0
