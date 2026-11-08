@@ -129,6 +129,30 @@ for chk in /usr/lib/greenboot/check/required.d/50-mfaos-desktop.sh \
     fi
 done
 
+# Tersi de bozuyor: systemd bir yapilandirma dosyasinda calistirma biti
+# bulursa her acilista "Configuration file ... is marked executable.
+# Please remove executable permission bits. Proceeding anyway." diye
+# uyariyor. Simdilik devam ediyor, ama uyari bosa dusmuyor ve bir gun
+# hata olacak. Bu bit fark edilmeden commit'lenebiliyor: Windows'ta
+# core.filemode=false, yani calisma agacindaki kip izlenmiyor. Duzeltmesi
+# calisma agacinda chmod degil, dogrudan indeks: git update-index
+# --chmod=-x <dosya>. Yalnizca bizim sahibi oldugumuz yollara bakiyoruz;
+# temel imajin dosyalarini denetlemek bize dusmez.
+x_conf="$(find /usr/lib/systemd/system/bootc-fetch-apply-updates.service.d \
+               /usr/lib/systemd/system/bootc-fetch-apply-updates.timer.d \
+               /usr/lib/systemd/system/mfaos-flatpak-setup.service \
+               /usr/lib/sysctl.d/99-mfaos-hardening.conf \
+               /usr/lib/bootc/kargs.d \
+               /etc/containers/policy.json \
+               /etc/containers/registries.d \
+               /etc/pki/containers \
+               -type f -perm -u+x 2>/dev/null)"
+if [[ -z "${x_conf}" ]]; then
+    ok "yapilandirma dosyalarinda calistirma biti yok"
+else
+    bad "yapilandirma dosyasinda calistirma biti var: $(echo "${x_conf}" | tr '\n' ' ')"
+fi
+
 # Bu paket kurulursa required.d/01_repository_dns_check.sh devreye girer
 # ve agsiz acilan laptop'i geri dondurur. Bilerek kurmuyoruz.
 if rpm -q greenboot-default-health-checks >/dev/null 2>&1; then
@@ -248,6 +272,24 @@ if grep -q '^DEFAULT_HOSTNAME=' /usr/lib/os-release 2>/dev/null; then
     ok "varsayilan hostname: $(. /usr/lib/os-release; echo "${DEFAULT_HOSTNAME}")"
 else
     warn "DEFAULT_HOSTNAME yok — makine kendini 'fedora' diye tanitir"
+fi
+
+# Ama DEFAULT_HOSTNAME TEK BASINA YETMIYOR, bu VM'de olculdu: adi
+# initramfs'in systemd'si kendi os-release'ine gore koyuyor ve orada bu
+# alan yok, gercek kokun systemd'si de "ad zaten ayarli" diye uzerine
+# yazmiyor. Kabukta `fedora` kaliyor. Bu ikiliyi duzelten parca
+# mfaos-hostname.service; ikisi birlikte olmali, yoksa alan imajda
+# durur ama hicbir ise yaramaz.
+if find /etc/systemd/system /usr/lib/systemd/system \
+     -name mfaos-hostname.service -type l 2>/dev/null | grep -q .; then
+    ok "mfaos-hostname.service etkin (adi acilista DEFAULT_HOSTNAME'e ceker)"
+else
+    bad "mfaos-hostname.service etkin degil — kabukta ad 'fedora' kalir"
+fi
+if [[ -x /usr/libexec/mfaos/set-default-hostname.sh ]]; then
+    ok "set-default-hostname.sh calistirilabilir"
+else
+    bad "set-default-hostname.sh yok/calistirilamaz — birim 203/EXEC ile duser"
 fi
 
 # ID=fedora kalmali: RPM Fusion, Flatpak ve ucuncu parti scriptler bu
