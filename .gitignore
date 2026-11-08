@@ -8,3 +8,6 @@ mok.priv
 output/
 *.qcow2
 *.tar.gz
+
+# Windows host uzerinde grep/sed cokerse buraya dokum atiyor; proje icerigi degil
+*.stackdump
